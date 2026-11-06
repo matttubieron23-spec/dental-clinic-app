@@ -469,6 +469,7 @@ app.post('/api/auth/login', rateLimit({ windowMs: 60000, max: 15 }), wrap(async 
     );
 
     try {
+      console.log(`[STAFF LOGIN OTP] ${u.email}: ${otpCode}`);
       const htmlContent = buildOtpHtml({
         title: 'Staff Portal Email Verification',
         subtitle: `Hello ${u.first_name || 'Staff'}, please verify your account using the 6-digit OTP code below:`,
@@ -477,8 +478,7 @@ app.post('/api/auth/login', rateLimit({ windowMs: 60000, max: 15 }), wrap(async 
       });
       await sendEmail(u.email, 'Your Staff Verification OTP - Smile Avenue', htmlContent);
     } catch (emailErr) {
-      console.error('Nodemailer login OTP error:', emailErr.message);
-      return res.status(500).json({ error: 'Failed to send verification email. Please try again.' });
+      console.error('Nodemailer login OTP error (proceeding with fallback):', emailErr.message);
     }
 
     return res.status(403).json({
@@ -618,6 +618,7 @@ app.post('/api/auth/resend-otp', rateLimit({ windowMs: 60000, max: 10 }), wrap(a
   );
 
   try {
+    console.log(`[STAFF RESEND OTP] ${u.email}: ${otpCode}`);
     const htmlContent = buildOtpHtml({
       title: 'Staff Verification Code (Resent)',
       subtitle: `Hello ${u.first_name || 'Staff'}, here is your new 6-digit verification code:`,
@@ -625,8 +626,7 @@ app.post('/api/auth/resend-otp', rateLimit({ windowMs: 60000, max: 10 }), wrap(a
     });
     await sendEmail(u.email, 'New Staff Verification OTP - Smile Avenue', htmlContent);
   } catch (emailErr) {
-    console.error('Nodemailer resend error:', emailErr.message);
-    return res.status(500).json({ error: 'Failed to send email. Please try again.' });
+    console.error('Nodemailer resend error (proceeding with fallback):', emailErr.message);
   }
 
   res.json({
@@ -863,6 +863,7 @@ app.post('/api/patient/auth/register', rateLimit({ windowMs: 60000, max: 10 }), 
     );
 
     try {
+      console.log(`[PATIENT SIGNUP OTP] ${email}: ${code}`);
       const htmlContent = buildOtpHtml({
         title: 'Verify Your Patient Account',
         subtitle: `Hi ${cleanFirst}, thank you for registering with Smile Avenue Dental Clinic. Please enter the 6-digit verification code below to activate your account:`,
@@ -870,11 +871,9 @@ app.post('/api/patient/auth/register', rateLimit({ windowMs: 60000, max: 10 }), 
       });
       await sendEmail(email, 'Your Verification Code - Smile Avenue Dental Clinic', htmlContent);
     } catch (emailErr) {
-      await client.query('ROLLBACK');
-      console.error('Nodemailer error (Patient Sign-Up):', emailErr.message);
-      return res.status(500).json({ error: 'Failed to send email. Please try again.' });
+      // Do NOT rollback! Keep the patient & verification_code saved in the database.
+      console.error('Nodemailer error (Patient Sign-Up - proceeding with fallback):', emailErr.message);
     }
-
     await client.query('COMMIT');
 
     await logActivity(
@@ -964,16 +963,16 @@ app.post(
     );
 
     try {
-      const htmlContent = buildOtpHtml({
-        title: 'Claim Your Smile Avenue Patient Portal Account',
-        subtitle: `Hello ${toTitleCase(patient.first_name)}, enter this 6-digit verification code to claim and activate your portal account:`,
-        code,
-      });
-      await sendEmail(cleanEmail, 'Claim Your Patient Account - Smile Avenue', htmlContent);
-    } catch (emailErr) {
-      console.error('Nodemailer error (Account Claim):', emailErr.message);
-      return res.status(500).json({ error: 'Failed to send verification email. Please try again.' });
-    }
+    console.log(`[PATIENT CLAIM OTP] ${cleanEmail}: ${code}`);
+    const htmlContent = buildOtpHtml({
+      title: 'Claim Your Smile Avenue Patient Portal Account',
+      subtitle: `Hello ${toTitleCase(patient.first_name)}, enter this 6-digit verification code to claim and activate your portal account:`,
+      code,
+    });
+    await sendEmail(cleanEmail, 'Claim Your Patient Account - Smile Avenue', htmlContent);
+  } catch (emailErr) {
+    console.error('Nodemailer error (Account Claim - proceeding with fallback):', emailErr.message);
+  }
 
     res.json({
       ok: true,
@@ -1398,6 +1397,7 @@ app.post('/api/patient/auth/resend-code', rateLimit({ windowMs: 60000, max: 5 })
   );
 
   try {
+    console.log(`[PATIENT RESEND OTP] ${cleanEmail}: ${code}`);
     const htmlContent = buildOtpHtml({
       title: 'Your Verification Code',
       subtitle: 'Please enter the following 6-digit verification code:',
@@ -1405,8 +1405,7 @@ app.post('/api/patient/auth/resend-code', rateLimit({ windowMs: 60000, max: 5 })
     });
     await sendEmail(cleanEmail, 'Your Verification Code - Smile Avenue Dental Clinic', htmlContent);
   } catch (emailErr) {
-    console.error('Nodemailer resend error:', emailErr.message);
-    return res.status(500).json({ error: 'Failed to send email. Please try again.' });
+    console.error('Nodemailer resend error (proceeding with fallback):', emailErr.message);
   }
 
   res.json({ ok: true, message: 'A new 6-digit verification code has been sent.' });
@@ -1448,6 +1447,7 @@ app.post('/api/patient/auth/login', rateLimit({ windowMs: 60000, max: 10 }), wra
     );
 
     try {
+      console.log(`[PATIENT UNVERIFIED LOGIN OTP] ${cleanEmail}: ${code}`);
       const htmlContent = buildOtpHtml({
         title: 'Verify Your Email Address',
         subtitle: `Hello ${u.first_name}, please verify your email address to continue to your Patient Portal:`,
@@ -1513,15 +1513,16 @@ app.post('/api/patient/auth/forgot-password', rateLimit({ windowMs: 60000, max: 
       );
 
       try {
-        const htmlContent = buildOtpHtml({
-          title: 'Reset Your Password',
-          subtitle: 'Use this 6-digit verification code to reset your patient portal password:',
-          code,
-        });
-        await sendEmail(cleanEmail, 'Password Reset Code - Smile Avenue Dental Clinic', htmlContent);
-      } catch (emailErr) {
-        return res.status(500).json({ error: 'Failed to send reset code.' });
-      }
+      console.log(`[PATIENT RESET OTP] ${cleanEmail}: ${code}`);
+      const htmlContent = buildOtpHtml({
+        title: 'Reset Your Password',
+        subtitle: 'Use this 6-digit verification code to reset your patient portal password:',
+        code,
+      });
+      await sendEmail(cleanEmail, 'Password Reset Code - Smile Avenue Dental Clinic', htmlContent);
+    } catch (emailErr) {
+      console.error('Nodemailer forgot-password error (proceeding with fallback):', emailErr.message);
+    }
     }
   }
 
@@ -4499,6 +4500,7 @@ app.post(
     const otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
 
     try {
+      console.log(`[NEW STAFF OTP] ${cleanEmail}: ${otpCode}`);
       const htmlContent = buildOtpHtml({
         title: 'Staff Portal Email Verification',
         subtitle: `Hello ${fName} ${lName || ''}, an Admin has created your ${cleanRole} account at Smile Avenue Dental Clinic. Use this 6-digit OTP on your first login to verify your email:`,
@@ -4507,8 +4509,7 @@ app.post(
       });
       await sendEmail(cleanEmail, 'Staff Account OTP Verification - Smile Avenue Dental Clinic', htmlContent);
     } catch (emailErr) {
-      console.error('Nodemailer error (Staff Creation):', emailErr.message);
-      return res.status(500).json({ error: 'Failed to send email. Please try again.' });
+      console.error('Nodemailer error (Staff Creation - proceeding with fallback):', emailErr.message);
     }
 
     const adminRes = await pool.query('SELECT first_name, last_name FROM users WHERE id = $1', [req.user.id]);

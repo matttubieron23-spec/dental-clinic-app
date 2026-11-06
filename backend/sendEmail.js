@@ -6,29 +6,61 @@ const transporter = nodemailer.createTransport({
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
   },
+  connectionTimeout: 5000, // Fail fast in 5s instead of hanging for 60s
+  greetingTimeout: 5000,
 });
 
 /**
- * Sends an HTML email via Gmail SMTP.
+ * Sends an HTML email via Google Apps Script HTTPS Webhook (if set) or Gmail SMTP.
  * @param {string} to - Recipient email address
  * @param {string} subject - Email subject line
  * @param {string} htmlContent - HTML body content
  */
 async function sendEmail(to, subject, htmlContent) {
-  const mailOptions = {
-    from: `"Smile Avenue Dental Clinic" <${process.env.EMAIL_USER}>`,
-    to,
-    subject,
-    html: htmlContent,
-  };
+  // 1. Prefer Google Apps Script HTTPS Webhook on Render (bypasses SMTP port blocks)
+  if (process.env.GAS_EMAIL_WEBHOOK) {
+    try {
+      const res = await fetch(process.env.GAS_EMAIL_WEBHOOK, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to, subject, html: htmlContent }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.ok === false) {
+        throw new Error(data.error || 'Google Apps Script email webhook failed');
+      }
+      console.log(`[HTTPS Email] Sent "${subject}" to ${to}`);
+      return;
+    } catch (webhookErr) {
+      console.error(`[HTTPS Email Error] ${webhookErr.message}`);
+    }
+  }
 
-  return await transporter.sendMail(mailOptions);
+  // 2. Fallback to Nodemailer SMTP (works on localhost; caught safely if blocked on Render)
+  try {
+    await transporter.sendMail({
+      from: `"Smile Avenue Dental Clinic" <${process.env.EMAIL_USER}>`,
+      to,
+      subject,
+      html: htmlContent,
+    });
+    console.log(`[SMTP Email] Sent "${subject}" to ${to}`);
+  } catch (smtpErr) {
+    console.warn(
+      `[Email Fallback] Could not reach SMTP server (${smtpErr.message}). Proceeding without crashing so you can use the OTP logged above.`
+    );
+  }
 }
 
 /**
  * Generates a clean, responsive HTML email template for 6-digit OTPs.
  */
 function buildOtpHtml({ title, subtitle, code, footerNote }) {
+  // Always log the OTP in Render logs as an instant backup for your capstone demo
+  console.log(`\n========================================`);
+  console.log(` [OTP GENERATED] ${title}: ${code}`);
+  console.log(`========================================\n`);
+
   return `
     <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 520px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; background-color: #ffffff;">
       <div style="background-color: #2563eb; padding: 24px; text-align: center; color: #ffffff;">
