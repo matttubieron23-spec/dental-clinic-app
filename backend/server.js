@@ -8,10 +8,16 @@ const { sendEmail, buildOtpHtml } = require('./sendEmail');
 
 const app = express();
 
-const clientOrigin = process.env.CLIENT_ORIGIN || 'https://dental-clinic-app-mauve.vercel.app';
+const clientOrigin = process.env.CLIENT_ORIGIN || 'https://dental-clinic-app-beige.vercel.app';
 app.use(cors({
-  origin: [clientOrigin, 'http://localhost:5173', 'http://localhost:3000', 'http://127.0.0.1:5173'],
-  credentials: true,
+    origin: (origin, callback) => {
+        if (!origin || origin.endsWith('.vercel.app') || origin.startsWith('http://localhost') || origin.startsWith('http://127.0.0.1')) {
+            callback(null, true);
+        } else {
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
+    credentials: true,
 }));
 app.use(express.json({ limit: '5mb' }));
 
