@@ -1,0 +1,40 @@
+ALLOW System Reset (Enable Purge Logging)
+
+-- 1. Drop the existing constraint
+ALTER TABLE activity_logs 
+DROP CONSTRAINT IF EXISTS activity_logs_action_type_check;
+
+-- 2. Re-create constraint INCLUDING 'System Reset'
+ALTER TABLE activity_logs 
+ADD CONSTRAINT activity_logs_action_type_check 
+CHECK (action_type IN (
+  'Login', 'Failed Login', 'Patient Login', 
+  'Create Patient', 'Add Patient', 'Edit Chart', 
+  'Record Payment', 'Book Appointment', 'Booking', 
+  'Inquiry', 'Staff Account Created', 'Staff Role Changed', 
+  'Staff Account Deleted', 'Account Recovery', 'Failed Recovery', 
+  'Password Reset', 'System Reset'
+));
+
+
+Query 2: BLOCK System Reset (Restrict / Disallow Purge Logging)
+
+-- 1. Clean up any existing 'System Reset' records (required before adding restrictive constraint)
+DELETE FROM activity_logs 
+WHERE action_type = 'System Reset';
+
+-- 2. Drop the existing constraint
+ALTER TABLE activity_logs 
+DROP CONSTRAINT IF EXISTS activity_logs_action_type_check;
+
+-- 3. Re-create constraint EXCLUDING 'System Reset'
+ALTER TABLE activity_logs 
+ADD CONSTRAINT activity_logs_action_type_check 
+CHECK (action_type IN (
+  'Login', 'Failed Login', 'Patient Login', 
+  'Create Patient', 'Add Patient', 'Edit Chart', 
+  'Record Payment', 'Book Appointment', 'Booking', 
+  'Inquiry', 'Staff Account Created', 'Staff Role Changed', 
+  'Staff Account Deleted', 'Account Recovery', 'Failed Recovery', 
+  'Password Reset'
+));

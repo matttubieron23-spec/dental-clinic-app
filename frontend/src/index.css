@@ -1,0 +1,234 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  margin: 0;
+  background: #f4f7f7;
+  color: #1e293b;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+@media print {
+  /* Hide the entire staff dashboard, sidebar, modal backdrop, and buttons */
+  body * {
+    visibility: hidden !important;
+  }
+
+  /* Make ONLY the official receipt card and its children visible */
+  .printable-receipt-area,
+  .printable-receipt-area * {
+    visibility: visible !important;
+  }
+
+  /* Position the receipt cleanly at the top of the printed page */
+  .printable-receipt-area {
+    position: fixed !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 28px !important;
+    border: none !important;
+    box-shadow: none !important;
+    background: #ffffff !important;
+  }
+
+  /* Hide modal action buttons (Close / Print) inside the receipt modal when printing */
+  .no-print {
+    display: none !important;
+  }
+}
+
+/* Calendar Timeline Grid & Scrollbars */
+.clinic-cal-scroll::-webkit-scrollbar {
+  height: 8px;
+  width: 8px;
+}
+.clinic-cal-scroll::-webkit-scrollbar-track {
+  background: #f8fafc;
+}
+.clinic-cal-scroll::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+
+/* Status Block Styles (Matches Legend) */
+.appt-block-unconfirmed {
+  background-color: #ffffff;
+  border: 1.5px solid #94a3b8;
+  border-left: 4px solid #64748b;
+  color: #334155;
+}
+.appt-block-confirmed {
+  background-color: #eff6ff;
+  border: 1px solid #93c5fd;
+  border-left: 4px solid #2563eb;
+  color: #1e3a8a;
+}
+.appt-block-arrived {
+  background-color: #fef2f2;
+  border: 1px solid #fca5a5;
+  border-left: 4px solid #dc2626;
+  color: #7f1d1d;
+}
+.appt-block-in_chair {
+  background-color: #f5f3ff;
+  border: 1px solid #c4b5fd;
+  border-left: 4px solid #7c3aed;
+  color: #4c1d95;
+}
+.appt-block-completed {
+  background-color: #ecfdf5;
+  border: 1px solid #6ee7b7;
+  border-left: 4px solid #10b981;
+  color: #064e3b;
+}
+.appt-block-cancelled {
+  background-color: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-left: 4px solid #94a3b8;
+  color: #94a3b8;
+  text-decoration: line-through;
+}
+
+/* ==========================================================================
+   DESIGN SYSTEM BASE: MODERN SAAS HEALTHCARE AESTHETIC (LAWS OF UX)
+   ========================================================================== */
+html,
+body,
+#root {
+  background-color: #F4F6F9;
+  color: #0F172A;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Tabular numbers for right-aligned currency columns in Ledger & Finance */
+.currency-col,
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Smooth Custom Scrollbars */
+.clinic-cal-scroll::-webkit-scrollbar {
+  height: 6px;
+  width: 6px;
+}
+.clinic-cal-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.clinic-cal-scroll::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 9999px;
+}
+.clinic-cal-scroll::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8;
+}
+
+/* Unified Appointment Calendar Block Colors (Soft Modern Pills) */
+.appt-block-unconfirmed {
+  background-color: #F8FAFC;
+  border: 1px solid #CBD5E1;
+  border-left: 3.5px solid #64748B;
+  color: #1E293B;
+}
+.appt-block-confirmed {
+  background-color: #EFF6FF;
+  border: 1px solid #BFDBFE;
+  border-left: 3.5px solid #2563EB;
+  color: #1E3A8A;
+}
+.appt-block-arrived {
+  background-color: #FEF2F2;
+  border: 1px solid #FECACA;
+  border-left: 3.5px solid #DC2626;
+  color: #7F1D1D;
+}
+.appt-block-in_chair {
+  background-color: #F5F3FF;
+  border: 1px solid #DDD6FE;
+  border-left: 3.5px solid #7C3AED;
+  color: #4C1D95;
+}
+.appt-block-completed,
+.appt-block-done {
+  background-color: #ECFDF5;
+  border: 1px solid #A7F3D0;
+  border-left: 3.5px solid #059669;
+  color: #064E3B;
+}
+.appt-block-cancelled,
+.appt-block-no_show,
+.appt-block-declined {
+  background-color: #F8FAFC;
+  border: 1px dashed #CBD5E1;
+  border-left: 3.5px solid #94A3B8;
+  color: #64748B;
+  text-decoration: line-through;
+}
+
+@media print {
+  /* 1. Zero margin removes Chrome's top/bottom header & footer text */
+  @page {
+    size: portrait;
+    margin: 0 !important;
+  }
+
+  /* 2. Lock page height strictly to 1 sheet — stops Page 2 from being created */
+  html, body {
+    width: 100% !important;
+    height: 100% !important;
+    max-height: 100vh !important;
+    overflow: hidden !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+  }
+
+  /* 3. Hide all background page contents */
+  body * {
+    visibility: hidden !important;
+  }
+
+  /* 4. Display the receipt */
+  #printable-receipt,
+  #printable-receipt * {
+    visibility: visible !important;
+  }
+
+  /* 5. Stretch receipt across the full page with clean inner padding */
+  #printable-receipt {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100vw !important;
+    max-width: 100vw !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 36px 48px !important;
+    box-sizing: border-box !important;
+    border: none !important;
+    box-shadow: none !important;
+    background: #ffffff !important;
+    transform: none !important;
+    page-break-after: avoid !important;
+    page-break-before: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  /* Ensure the inner bordered box fills the printable width */
+  #printable-receipt > div {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  /* 6. Hide modal buttons and close icons */
+  .no-print,
+  button {
+    display: none !important;
+  }
+}

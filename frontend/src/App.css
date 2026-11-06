@@ -1,0 +1,41 @@
+/* Striped backgrounds for Planned tool pills and legend badges */
+.planned-stripe-blue {
+  background: repeating-linear-gradient(
+    -45deg,
+    #eff6ff,
+    #eff6ff 4px,
+    #3b82f6 4px,
+    #3b82f6 8px
+  );
+}
+
+.planned-stripe-teal {
+  background: repeating-linear-gradient(
+    -45deg,
+    #f0fdfa,
+    #f0fdfa 4px,
+    #0d9488 4px,
+    #0d9488 8px
+  );
+}
+
+.planned-stripe-purple {
+  background: repeating-linear-gradient(
+    -45deg,
+    #f5f3ff,
+    #f5f3ff 4px,
+    #7c3aed 4px,
+    #7c3aed 8px
+  );
+}
+
+/* Interactive SVG tooth surface hover */
+.tooth-zone {
+  transition: opacity 0.15s ease, stroke-width 0.15s ease;
+  cursor: pointer;
+}
+.tooth-zone:hover {
+  opacity: 0.78;
+  stroke: #1e293b;
+  stroke-width: 2.5px;
+}
