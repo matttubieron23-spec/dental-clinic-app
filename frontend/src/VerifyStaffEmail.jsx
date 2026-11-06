@@ -125,7 +125,7 @@ export default function StaffVerify({ email: initialEmail, onVerified, onBackToL
 
     setVerifying(true);
     try {
-      const res = await api('/auth/verify-otp', {
+      const res = await api('/api/auth/verify-otp', {
         method: 'POST',
         body: { email, code: codeString },
       });
@@ -154,7 +154,7 @@ export default function StaffVerify({ email: initialEmail, onVerified, onBackToL
     setError('');
     setNotice('');
     try {
-      const res = await api('/auth/resend-otp', {
+      const res = await api('/api/auth/resend-otp', {
         method: 'POST',
         body: { email },
       });

@@ -50,7 +50,7 @@ function StaffLogin({ onLogin, onNeedsVerification, onBackToPublic }) {
 
     setSubmitting(true);
     try {
-      const res = await api('/auth/login', {
+      const res = await api('/api/auth/login', {
         method: 'POST',
         body: { email: cleanEmail, password },
       });
@@ -214,12 +214,12 @@ export default function App() {
 
   useEffect(() => {
     if (mode === 'staff' && user) {
-      api('/staff/inquiries')
+      api('/api/staff/inquiries')
         .then((rows) => {
           setUnreadInquiries((rows || []).filter((r) => !r.is_read).length);
         })
         .catch(() => {});
-      api('/staff/identity-corrections')
+      api('/api/staff/identity-corrections')
         .then((rows) => {
           setPendingCorrections((rows || []).filter((r) => r.status === 'pending').length);
         })
