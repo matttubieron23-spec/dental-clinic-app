@@ -1,4 +1,4 @@
-const API = 'https://dental-clinic-app-olwy.onrender.com/';
+const API_URL = import.meta.env.VITE_API_URL || 'https://dental-clinic-app-olwy.onrender.com/';
 
 // ---------------------------------------------------------------------------
 // Staff Token & API
@@ -14,7 +14,7 @@ export const getStaffUser = () => {
 
 export async function api(path, options = {}) {
   const token = getToken();
-  const res = await fetch(API + path, {
+  const res = await fetch(API_URL + path, {
     method: options.method || 'GET',
     headers: {
       'Content-Type': 'application/json',
