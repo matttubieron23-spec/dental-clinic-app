@@ -183,7 +183,7 @@ export default function PatientLedger({ patientId, isPatientView = false }) {
 
     setSavingPayment(true);
     try {
-      await api(`/staff/patients/${patientId}/ledger/payments`, {
+      await api(`api/staff/patients/${patientId}/ledger/payments`, {
         method: 'POST',
         body: {
           amount: grossAmount,

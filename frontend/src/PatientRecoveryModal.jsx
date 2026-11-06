@@ -54,7 +54,7 @@ export default function PatientRecoveryModal({ isOpen, onClose, onSwitchToLogin 
 
     setLoading(true);
     try {
-      const res = await patientApi('/patient/auth/recover/lookup', {
+      const res = await patientApi('api/patient/auth/recover/lookup', {
         method: 'POST',
         body: {
           first_name: lookupForm.first_name.trim(),
@@ -85,7 +85,7 @@ export default function PatientRecoveryModal({ isOpen, onClose, onSwitchToLogin 
 
     setLoading(true);
     try {
-      const res = await patientApi('/patient/auth/recover/verify', {
+      const res = await patientApi('api/patient/auth/recover/verify', {
         method: 'POST',
         body: {
           patient_id: patientId,

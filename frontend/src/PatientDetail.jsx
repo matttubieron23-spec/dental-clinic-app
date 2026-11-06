@@ -176,7 +176,7 @@ export default function PatientDetail({
     setLoading(true);
     setError('');
     try {
-      const data = await api(`/staff/patients/${patientId}`);
+      const data = await api(`api/staff/patients/${patientId}`);
       setPatient(data.patient);
       setMedHistory(data.medical_history || null);
       setAppointments(data.appointments || []);
@@ -268,7 +268,7 @@ export default function PatientDetail({
     setSuccess('');
     const nextActive = patient.is_active === false;
     try {
-      const res = await api(`/staff/patients/${patient.id}/archive`, {
+      const res = await api(`api/staff/patients/${patient.id}/archive`, {
         method: 'PATCH',
         body: { is_active: nextActive },
       });
@@ -371,7 +371,7 @@ export default function PatientDetail({
 
     setSavingProfile(true);
     try {
-      await api(`/staff/patients/${patient.id}`, {
+      await api(`api/staff/patients/${patient.id}`, {
         method: 'PUT',
         body: {
           first_name: toTitleCase(profileForm.first_name),
@@ -413,7 +413,7 @@ export default function PatientDetail({
     }
     setSavingConsent(true);
     try {
-      await api(`/staff/patients/${patient.id}/consent`, {
+      await api(`api/staff/patients/${patient.id}/consent`, {
         method: 'POST',
         body: { terms_accepted: true, privacy_accepted: true },
       });
@@ -432,7 +432,7 @@ export default function PatientDetail({
     setSavingConsent(true);
     setError('');
     try {
-      await api(`/staff/patients/${patient.id}/consent`, { method: 'DELETE' });
+      await api(`api/staff/patients/${patient.id}/consent`, { method: 'DELETE' });
       setWithdrawModalOpen(false);
       setSuccess('Patient consent has been withdrawn.');
       await loadDetail();
@@ -481,7 +481,7 @@ export default function PatientDetail({
         ...medForm.answers,
         selected_conditions: medForm.selected_conditions,
       };
-      await api(`/staff/patients/${patient.id}/medical-history`, {
+      await api(`api/staff/patients/${patient.id}/medical-history`, {
         method: 'POST',
         body: {
           ...medForm,

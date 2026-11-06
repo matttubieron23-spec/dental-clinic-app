@@ -86,7 +86,7 @@ export default function PatientChart({ patientId, isPatientView = false }) {
 
       const [chartRes, dentistList] = await Promise.all([
         api(endpoint),
-        isPatientView ? Promise.resolve([]) : api('/dentists').catch(() => []),
+        isPatientView ? Promise.resolve([]) : api('api/dentists').catch(() => []),
       ]);
 
       const rawTeeth = chartRes?.teeth || chartRes?.odontogram || {};
@@ -148,7 +148,7 @@ export default function PatientChart({ patientId, isPatientView = false }) {
       };
       setTeethMap(nextMap);
 
-      await api(`/staff/patients/${patientId}/chart`, {
+      await api(`api/staff/patients/${patientId}/chart`, {
         method: 'PUT',
         body: {
           tooth_number: selectedTooth,
@@ -185,7 +185,7 @@ export default function PatientChart({ patientId, isPatientView = false }) {
     setError('');
     setSuccess('');
     try {
-      await api(`/staff/patients/${patientId}/treatments`, {
+      await api(`api/staff/patients/${patientId}/treatments`, {
         method: 'POST',
         body: {
           tooth_number: treatmentForm.tooth_number,
@@ -217,7 +217,7 @@ export default function PatientChart({ patientId, isPatientView = false }) {
     setError('');
     setSuccess('');
     try {
-      await api(`/staff/patients/${patientId}/treatments/${tx.id}/status`, {
+      await api(`api/staff/patients/${patientId}/treatments/${tx.id}/status`, {
         method: 'PATCH',
         body: { status: 'Done' },
       });

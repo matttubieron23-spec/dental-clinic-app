@@ -84,7 +84,7 @@ function PatientReviewSection() {
 
   useEffect(() => {
     let active = true;
-    patientApi('/patient/reviews/me')
+    patientApi('api/patient/reviews/me')
       .then((res) => {
         if (!active) return;
         if (res?.review) {
@@ -116,7 +116,7 @@ function PatientReviewSection() {
 
     setSubmitting(true);
     try {
-      const res = await patientApi('/patient/reviews', {
+      const res = await patientApi('api/patient/reviews', {
         method: 'POST',
         body: {
           rating,
@@ -291,10 +291,10 @@ export default function PatientDashboard({ patientUser, onGoBook }) {
     setLoadingInitial(true);
     try {
       const [aData, rData, pData, cData] = await Promise.all([
-        patientApi('/patient/appointments'),
-        patientApi('/patient/appointments/requests'),
-        patientApi('/patient/me'),
-        patientApi('/patient/identity-corrections'),
+        patientApi('api/patient/appointments'),
+        patientApi('api/patient/appointments/requests'),
+        patientApi('api/patient/me'),
+        patientApi('api/patient/identity-corrections'),
       ]);
       setAppts(aData || []);
       setRequests(rData || []);
@@ -326,7 +326,7 @@ export default function PatientDashboard({ patientUser, onGoBook }) {
   const loadHistory = async () => {
     setLoadingHistory(true);
     try {
-      const res = await patientApi('/patient/me/history');
+      const res = await patientApi('api/patient/me/history');
       setClinicalHistory(Array.isArray(res?.clinical) ? res.clinical : []);
       setFinancialHistory(Array.isArray(res?.financial) ? res.financial : []);
     } catch (err) {
@@ -363,7 +363,7 @@ export default function PatientDashboard({ patientUser, onGoBook }) {
     setLoadingAction(true);
     setRClosed(false);
     setRTime('');
-    patientApi(`/patient/appointments/available-slots?date=${rDate}`)
+    patientApi(`api/patient/appointments/available-slots?date=${rDate}`)
       .then((res) => {
         setRClosed(Boolean(res.is_closed));
         setRSlots(res.available_slots || []);
@@ -420,7 +420,7 @@ export default function PatientDashboard({ patientUser, onGoBook }) {
     setLoadingReceiptId(transactionId);
     setError('');
     try {
-      const res = await patientApi(`/patient/me/receipt/${transactionId}`);
+      const res = await patientApi(`api/patient/me/receipt/${transactionId}`);
       setSelectedReceipt(res);
     } catch (err) {
       setError(err.message || 'Failed to load official receipt.');
@@ -463,7 +463,7 @@ export default function PatientDashboard({ patientUser, onGoBook }) {
     setSuccess('');
     setLoadingAction(true);
     try {
-      const res = await patientApi(`/patient/appointments/${rescheduleModal.id}/reschedule`, {
+      const res = await patientApi(`api/patient/appointments/${rescheduleModal.id}/reschedule`, {
         method: 'POST',
         body: {
           preferred_date: rDate,
@@ -529,7 +529,7 @@ export default function PatientDashboard({ patientUser, onGoBook }) {
     setFormErrors({});
     setLoadingAction(true);
     try {
-      const res = await patientApi('/patient/me/profile', {
+      const res = await patientApi('api/patient/me/profile', {
         method: 'PUT',
         body: profileForm,
       });
@@ -619,7 +619,7 @@ export default function PatientDashboard({ patientUser, onGoBook }) {
     setCorrErrors({});
     setLoadingAction(true);
     try {
-      const res = await patientApi('/patient/identity-corrections', {
+      const res = await patientApi('api/patient/identity-corrections', {
         method: 'POST',
         body: {
           field_name,
@@ -677,7 +677,7 @@ export default function PatientDashboard({ patientUser, onGoBook }) {
         ...medicalForm.answers,
         selected_conditions: medicalForm.selected_conditions,
       };
-      const res = await patientApi('/patient/me/medical-history', {
+      const res = await patientApi('api/patient/me/medical-history', {
         method: 'POST',
         body: { ...medicalForm, answers: mergedAnswers },
       });

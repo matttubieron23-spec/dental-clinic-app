@@ -230,7 +230,7 @@ export default function PublicSite({
 
   useEffect(() => {
     let active = true;
-    api('/public/reviews')
+    api('api/public/reviews')
       .then((rows) => {
         if (active && Array.isArray(rows)) {
           setReviews(rows);
@@ -279,7 +279,7 @@ export default function PublicSite({
 
     setSendingInquiry(true);
     try {
-      const res = await api('/public/inquiries', {
+      const res = await api('api/public/inquiries', {
         method: 'POST',
         body: inquiryForm,
       });

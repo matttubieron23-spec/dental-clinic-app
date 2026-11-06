@@ -38,7 +38,7 @@ export default function StaffManagement() {
     setLoading(true);
     setError('');
     try {
-      const rows = await api('/staff/users');
+      const rows = await api('api/staff/users');
       setStaffList(Array.isArray(rows) ? rows : []);
     } catch (err) {
       setError(err.message || 'Failed to load clinic staff accounts.');
@@ -71,7 +71,7 @@ export default function StaffManagement() {
 
     setCreating(true);
     try {
-      const res = await api('/staff/users', {
+      const res = await api('api/staff/users', {
         method: 'POST',
         body: newStaff,
       });
@@ -95,7 +95,7 @@ export default function StaffManagement() {
     setError('');
     setSuccess('');
     try {
-      const res = await api(`/staff/users/${staffId}/role`, {
+      const res = await api(`api/staff/users/${staffId}/role`, {
         method: 'PUT',
         body: { role: nextRole },
       });
@@ -117,7 +117,7 @@ export default function StaffManagement() {
     setResetting(true);
     setError('');
     try {
-      const res = await api(`/staff/users/${resetTarget.id}/password`, {
+      const res = await api(`api/staff/users/${resetTarget.id}/password`, {
         method: 'PUT',
         body: { new_password: newPassword },
       });
@@ -136,7 +136,7 @@ export default function StaffManagement() {
     setDeleting(true);
     setError('');
     try {
-      const res = await api(`/staff/users/${deleteTarget.id}`, {
+      const res = await api(`api/staff/users/${deleteTarget.id}`, {
         method: 'DELETE',
       });
       setSuccess(res.message || 'Staff account deactivated.');
@@ -161,7 +161,7 @@ export default function StaffManagement() {
     setPurging(true);
     setError('');
     try {
-      await api('/admin/reset-system', { method: 'POST' });
+      await api('api/admin/reset-system', { method: 'POST' });
 
       // Clear all authentication credentials
       localStorage.removeItem('token');

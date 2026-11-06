@@ -352,7 +352,7 @@ export default function PatientAuthModal({
 
     setLoading(true);
     try {
-      const check = await patientApi('/patient/auth/check-email', {
+      const check = await patientApi('api/patient/auth/check-email', {
         method: 'POST',
         body: { email: cleanEmail },
       });
@@ -434,7 +434,7 @@ export default function PatientAuthModal({
     setLoading(true);
     try {
       const cleanEmail = regForm.email.trim().toLowerCase();
-      await patientApi('/patient/auth/register', {
+      await patientApi('api/patient/auth/register', {
         method: 'POST',
         body: {
           email: cleanEmail,
@@ -539,7 +539,7 @@ export default function PatientAuthModal({
     setLoading(true);
     setError('');
     try {
-      const res = await patientApi('/patient/auth/verify-code', {
+      const res = await patientApi('api/patient/auth/verify-code', {
         method: 'POST',
         body: {
           email: verifyEmail,
@@ -572,7 +572,7 @@ export default function PatientAuthModal({
     setError('');
     setNotice('');
     try {
-      const res = await patientApi('/patient/auth/resend-code', {
+      const res = await patientApi('api/patient/auth/resend-code', {
         method: 'POST',
         body: {
           email: verifyEmail,
@@ -604,7 +604,7 @@ export default function PatientAuthModal({
     setLoading(true);
     setError('');
     try {
-      const res = await patientApi('/patient/auth/forgot-password', {
+      const res = await patientApi('api/patient/auth/forgot-password', {
         method: 'POST',
         body: { email: clean },
       });
@@ -635,7 +635,7 @@ export default function PatientAuthModal({
 
     setLoading(true);
     try {
-      const res = await patientApi('/patient/auth/reset-password', {
+      const res = await patientApi('api/patient/auth/reset-password', {
         method: 'POST',
         body: {
           email: verifyEmail,
@@ -666,7 +666,7 @@ export default function PatientAuthModal({
 
     setLoading(true);
     try {
-      const res = await patientApi('/patient/auth/recover/lookup', {
+      const res = await patientApi('api/patient/auth/recover/lookup', {
         method: 'POST',
         body: {
           first_name: recoveryForm.first_name.trim(),
@@ -697,7 +697,7 @@ export default function PatientAuthModal({
 
     setLoading(true);
     try {
-      await patientApi('/patient/auth/recover/verify', {
+      await patientApi('api/patient/auth/recover/verify', {
         method: 'POST',
         body: {
           patient_id: recoveredPatientId,
@@ -732,7 +732,7 @@ export default function PatientAuthModal({
 
     setLoading(true);
     try {
-      const res = await patientApi('/patient/auth/recover/reset-password', {
+      const res = await patientApi('api/patient/auth/recover/reset-password', {
         method: 'POST',
         body: {
           patient_id: recoveredPatientId,
