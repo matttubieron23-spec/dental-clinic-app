@@ -101,7 +101,7 @@ export default function AddPatientModal({ onClose, onSaved }) {
   };
 
   useEffect(() => {
-    api('/patients/next-no').then((r) => setSuggested(r.patient_no)).catch(() => {});
+    api('api/patients/next-no').then((r) => setSuggested(r.patient_no)).catch(() => {});
     getJson('/provinces/')
       .then((p) => setProvinces([{ code: 'NCR', name: 'Metro Manila (NCR)' }, ...p.sort(byName)]))
       .catch(() => setGeoFail(true));
@@ -189,7 +189,7 @@ export default function AddPatientModal({ onClose, onSaved }) {
     setSaving(true);
     try {
       const { d, m, y, reminders, consent, ...rest } = f;
-      await api('/patients', {
+      await api('api/patients', {
         method: 'POST',
         body: {
           ...rest,

@@ -11,7 +11,7 @@ export default function DuplicatesModal({ isOpen, onClose, onSelectPatient }) {
     setLoading(true);
     setError('');
     try {
-      const res = await api('/staff/patients/duplicates');
+      const res = await api('api/staff/patients/duplicates');
       setClusters(Array.isArray(res) ? res : []);
     } catch (err) {
       setError(err.message || 'Failed to scan for duplicate records.');

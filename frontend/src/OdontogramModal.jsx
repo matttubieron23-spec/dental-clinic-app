@@ -29,7 +29,7 @@ export default function OdontogramModal({ patient, onClose }) {
   const [saving, setSaving] = useState(false);
 
   const load = () =>
-    api(`/patients/${patient.id}/teeth`)
+    api(`api/patients/${patient.id}/teeth`)
       .then((rows) => setTeeth(Object.fromEntries(rows.map((r) => [r.tooth_number, r]))))
       .catch((e) => setError(e.message));
 
@@ -48,7 +48,7 @@ export default function OdontogramModal({ patient, onClose }) {
     setSaving(true);
     setError('');
     try {
-      await api(`/patients/${patient.id}/teeth`, { method: 'POST', body: { tooth_number: selected, ...form } });
+      await api(`api/patients/${patient.id}/teeth`, { method: 'POST', body: { tooth_number: selected, ...form } });
       await load();
     } catch (e) {
       setError(e.message);

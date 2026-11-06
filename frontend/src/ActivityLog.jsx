@@ -36,7 +36,7 @@ export default function ActivityLog({ onNavigatePatient }) {
         params.append('search', searchQuery.trim());
       }
 
-      const res = await api(`/staff/activity-logs?${params.toString()}`);
+      const res = await api(`api/staff/activity-logs?${params.toString()}`);
       setLogs(Array.isArray(res?.logs) ? res.logs : Array.isArray(res) ? res : []);
     } catch (err) {
       setError(err.message || 'Failed to load system activity logs.');

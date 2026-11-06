@@ -68,7 +68,7 @@ export default function Overview({
     setLoading(true);
     setError('');
     try {
-      const res = await api('/staff/overview');
+      const res = await api('api/staff/overview');
       if (res) {
         setData({
           metrics: res.metrics || {

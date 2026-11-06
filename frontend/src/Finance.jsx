@@ -40,7 +40,7 @@ export default function Finance({ onNavigateToPatient }) {
   const loadSummary = async () => {
     setLoadingSummary(true);
     try {
-      const data = await api('/staff/finance/summary');
+      const data = await api('api/staff/finance/summary');
       setSummary(data || {});
     } catch (err) {
       setError(err.message || 'Failed to load financial overview.');
@@ -54,7 +54,7 @@ export default function Finance({ onNavigateToPatient }) {
     setLoadingTx(true);
     try {
       const q = encodeURIComponent(searchQuery.trim());
-      const data = await api(`/staff/finance/transactions?q=${q}&period=${periodFilter}`);
+      const data = await api(`api/staff/finance/transactions?q=${q}&period=${periodFilter}`);
       setTransactions(Array.isArray(data) ? data : []);
     } catch (err) {
       setError(err.message || 'Failed to load transaction history.');
@@ -68,7 +68,7 @@ export default function Finance({ onNavigateToPatient }) {
     setLoadingOutstanding(true);
     setOutstandingError('');
     try {
-      const data = await api('/finance/outstanding');
+      const data = await api('api/finance/outstanding');
       setOutstandingList(Array.isArray(data) ? data : []);
     } catch (err) {
       setOutstandingError(err.message || 'Failed to load outstanding balance accounts.');

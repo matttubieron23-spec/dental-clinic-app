@@ -141,7 +141,7 @@ export default function Patients() {
     setLoadingList(true);
     setError('');
     try {
-      const rows = await api(`/patients?q=${encodeURIComponent(q.trim())}`);
+      const rows = await api(`api/patients?q=${encodeURIComponent(q.trim())}`);
       setPatients(Array.isArray(rows) ? rows : []);
     } catch (err) {
       setError(err.message || 'Failed to load patients directory.');
@@ -162,7 +162,7 @@ export default function Patients() {
     setLoadingDetail(true);
     setError('');
     try {
-      const res = await api(`/staff/patients/${id}`);
+      const res = await api(`api/staff/patients/${id}`);
       setDetailData(res);
       setEditingProfile(false);
       setEditingMedical(false);
@@ -194,7 +194,7 @@ export default function Patients() {
     setError('');
     let nextNo = '';
     try {
-      const res = await api('/patients/next-no');
+      const res = await api('api/patients/next-no');
       nextNo = res?.patient_no || '';
     } catch {}
 
@@ -257,7 +257,7 @@ export default function Patients() {
     setSavingNew(true);
     setNewFormErrors({});
     try {
-      const created = await api('/patients', {
+      const created = await api('api/patients', {
         method: 'POST',
         body: newForm,
       });
@@ -302,7 +302,7 @@ export default function Patients() {
     setError('');
     setSuccess('');
     try {
-      await api(`/staff/patients/${selectedPatientId}`, {
+      await api(`api/staff/patients/${selectedPatientId}`, {
         method: 'PUT',
         body: editForm,
       });
@@ -321,7 +321,7 @@ export default function Patients() {
     if (!p) return;
     const nextActive = p.is_active === false;
     try {
-      await api(`/staff/patients/${p.id}/archive`, {
+      await api(`api/staff/patients/${p.id}/archive`, {
         method: 'PATCH',
         body: { is_active: nextActive },
       });
@@ -336,7 +336,7 @@ export default function Patients() {
     const p = detailData?.patient;
     if (!p) return;
     try {
-      await api(`/staff/patients/${p.id}/consent`, {
+      await api(`api/staff/patients/${p.id}/consent`, {
         method: 'POST',
         body: { terms_accepted: true, privacy_accepted: true },
       });
@@ -365,7 +365,7 @@ export default function Patients() {
     setError('');
     setSuccess('');
     try {
-      await api(`/staff/patients/${selectedPatientId}/medical-history`, {
+      await api(`api/staff/patients/${selectedPatientId}/medical-history`, {
         method: 'POST',
         body: {
           ...medForm,

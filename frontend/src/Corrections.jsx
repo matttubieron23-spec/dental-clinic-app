@@ -25,7 +25,7 @@ export default function Corrections({ onPendingCountChange }) {
     setLoading(true);
     setError('');
     try {
-      const data = await api('/staff/identity-corrections');
+      const data = await api('api/staff/identity-corrections');
       const list = Array.isArray(data) ? data : [];
       setRows(list);
       onPendingCountChange?.(list.filter((r) => r.status === 'pending').length);
@@ -45,7 +45,7 @@ export default function Corrections({ onPendingCountChange }) {
     setError('');
     setSuccess('');
     try {
-      const res = await api(`/staff/identity-corrections/${item.id}/approve`, {
+      const res = await api(`api/staff/identity-corrections/${item.id}/approve`, {
         method: 'POST',
       });
       setSuccess(res.message || 'Identity correction approved.');
@@ -63,7 +63,7 @@ export default function Corrections({ onPendingCountChange }) {
     setProcessing(true);
     setError('');
     try {
-      const res = await api(`/staff/identity-corrections/${declineModal.id}/decline`, {
+      const res = await api(`api/staff/identity-corrections/${declineModal.id}/decline`, {
         method: 'POST',
         body: { staff_reason: declineReason },
       });

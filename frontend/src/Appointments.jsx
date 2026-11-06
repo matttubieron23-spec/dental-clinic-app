@@ -210,9 +210,9 @@ export default function Appointments({ initialSubTab = 'calendar' }) {
     setError('');
     try {
       const [dentistList, patientList, apptList] = await Promise.all([
-        api('/dentists'),
-        api('/patients'),
-        api(`/appointments?from=${dateWindow.from}&to=${dateWindow.to}`),
+        api('api/dentists'),
+        api('api/patients'),
+        api(`api/appointments?from=${dateWindow.from}&to=${dateWindow.to}`),
       ]);
       const dRows = Array.isArray(dentistList) ? dentistList : [];
       const pRows = Array.isArray(patientList)
@@ -234,7 +234,7 @@ export default function Appointments({ initialSubTab = 'calendar' }) {
   const loadOnlineRequests = async () => {
     setLoadingReqs(true);
     try {
-      const rows = await api('/staff/appointment-requests');
+      const rows = await api('api/staff/appointment-requests');
       setRequests(Array.isArray(rows) ? rows : []);
     } catch (err) {
       setError(err.message || 'Failed to load online requests.');
@@ -304,7 +304,7 @@ export default function Appointments({ initialSubTab = 'calendar' }) {
 
     setSavingNewAppt(true);
     try {
-      await api('/appointments', {
+      await api('api/appointments', {
         method: 'POST',
         body: {
           patient_id: newApptForm.patient_id,
@@ -336,7 +336,7 @@ export default function Appointments({ initialSubTab = 'calendar' }) {
     setUpdatingStatus(true);
     setError('');
     try {
-      await api(`/appointments/${selectedAppt.id}/status`, {
+      await api(`api/appointments/${selectedAppt.id}/status`, {
         method: 'PATCH',
         body: { status: statusValue },
       });
@@ -499,7 +499,7 @@ export default function Appointments({ initialSubTab = 'calendar' }) {
     setProcessingReq(true);
     setError('');
     try {
-      const res = await api(`/staff/appointment-requests/${confirmModal.id}/confirm`, {
+      const res = await api(`api/staff/appointment-requests/${confirmModal.id}/confirm`, {
         method: 'POST',
         body: { dentist_id: selectedDentistId },
       });
@@ -519,7 +519,7 @@ export default function Appointments({ initialSubTab = 'calendar' }) {
     setProcessingReq(true);
     setError('');
     try {
-      await api(`/staff/appointment-requests/${declineModal.id}/decline`, {
+      await api(`api/staff/appointment-requests/${declineModal.id}/decline`, {
         method: 'POST',
         body: { reason: declineReason },
       });
@@ -540,7 +540,7 @@ export default function Appointments({ initialSubTab = 'calendar' }) {
     setProcessingReq(true);
     setError('');
     try {
-      const res = await api(`/staff/appointment-requests/${reschedModal.id}/reschedule`, {
+      const res = await api(`api/staff/appointment-requests/${reschedModal.id}/reschedule`, {
         method: 'POST',
         body: reschedForm,
       });

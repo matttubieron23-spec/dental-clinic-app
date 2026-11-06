@@ -324,7 +324,7 @@ export default function DentalChartTab({ patientId, onLedgerUpdated }) {
     setLoadingChart(true);
     setError('');
     try {
-      const rows = await api(`/staff/patients/${patientId}/chart`);
+      const rows = await api(`api/staff/patients/${patientId}/chart`);
       const nextChart = {};
       const nextPrices = {};
       const nextDbIds = {};
@@ -582,7 +582,7 @@ export default function DentalChartTab({ patientId, onLedgerUpdated }) {
     setSavedNotice('');
     try {
       const treatmentsPayload = buildAllChartTreatmentsPayload();
-      await api(`/staff/patients/${patientId}/treatments`, {
+      await api(`api/staff/patients/${patientId}/treatments`, {
         method: 'POST',
         body: {
           sync_chart: true,
@@ -612,7 +612,7 @@ export default function DentalChartTab({ patientId, onLedgerUpdated }) {
 
       // If the user painted a Planned item and clicked "Mark as Done" before clicking "Save Chart", create the row first
       if (!treatmentId) {
-        const createRes = await api(`/staff/patients/${patientId}/treatments`, {
+        const createRes = await api(`api/staff/patients/${patientId}/treatments`, {
           method: 'POST',
           body: {
             tooth_number: item.toothNum,
@@ -630,7 +630,7 @@ export default function DentalChartTab({ patientId, onLedgerUpdated }) {
       }
 
       // Call PUT to mark treatment "Done" and automatically insert Charge into patient_ledger
-      await api(`/staff/patients/${patientId}/treatments/${treatmentId}/done`, {
+      await api(`api/staff/patients/${patientId}/treatments/${treatmentId}/done`, {
         method: 'PUT',
         body: { price: itemPrice },
       });

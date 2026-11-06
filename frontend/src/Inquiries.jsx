@@ -11,7 +11,7 @@ export default function Inquiries({ onUnreadCountChange }) {
     setLoading(true);
     setError('');
     try {
-      const rows = await api('/staff/inquiries');
+      const rows = await api('api/staff/inquiries');
       const list = Array.isArray(rows) ? rows : [];
       setInquiries(list);
       onUnreadCountChange?.(list.filter((r) => !r.is_read).length);
@@ -28,7 +28,7 @@ export default function Inquiries({ onUnreadCountChange }) {
 
   const handleToggleRead = async (item) => {
     try {
-      await api(`/staff/inquiries/${item.id}/read`, {
+      await api(`api/staff/inquiries/${item.id}/read`, {
         method: 'PUT',
         body: { is_read: !item.is_read },
       });

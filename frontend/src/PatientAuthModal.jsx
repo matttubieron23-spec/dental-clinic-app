@@ -214,7 +214,7 @@ export default function PatientAuthModal({
 
     setLoading(true);
     try {
-      const res = await patientApi('/patient/auth/login', {
+      const res = await patientApi('api/patient/auth/login', {
         method: 'POST',
         body: {
           email: loginEmail.trim().toLowerCase(),
@@ -254,7 +254,7 @@ export default function PatientAuthModal({
 
     setLoading(true);
     try {
-      await patientApi('/patient/auth/claim/initiate', {
+      await patientApi('api/patient/auth/claim/initiate', {
         method: 'POST',
         body: {
           email: claimEmail.trim().toLowerCase(),
@@ -290,7 +290,7 @@ export default function PatientAuthModal({
 
     setLoading(true);
     try {
-      const res = await patientApi('/patient/auth/claim/complete', {
+      const res = await patientApi('api/patient/auth/claim/complete', {
         method: 'POST',
         body: {
           claim_token: claimToken,

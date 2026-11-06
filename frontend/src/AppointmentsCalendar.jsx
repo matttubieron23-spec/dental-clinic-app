@@ -153,8 +153,8 @@ export default function AppointmentsCalendar({ onSelectAppointment }) {
     setError('');
     try {
       const [dentistList, apptList] = await Promise.all([
-        api('/dentists'),
-        api(`/appointments?from=${dateWindow.from}&to=${dateWindow.to}`),
+        api('api/dentists'),
+        api(`api/appointments?from=${dateWindow.from}&to=${dateWindow.to}`),
       ]);
       setDentists(Array.isArray(dentistList) ? dentistList : []);
       setAppointments(Array.isArray(apptList) ? apptList : []);

@@ -75,7 +75,7 @@ export default function BookAppointment({
     setIsClosedSunday(false);
     setPreferredTime('');
 
-    patientApi(`/patient/appointments/available-slots?date=${preferredDate}`)
+    patientApi(`api/patient/appointments/available-slots?date=${preferredDate}`)
       .then((res) => {
         if (!active) return;
         const closed = Boolean(res?.is_closed);
@@ -130,7 +130,7 @@ export default function BookAppointment({
 
     setSubmitting(true);
     try {
-      const res = await patientApi('/patient/appointments/request', {
+      const res = await patientApi('api/patient/appointments/request', {
         method: 'POST',
         body: {
           services: selectedServices,
