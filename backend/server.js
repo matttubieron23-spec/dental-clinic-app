@@ -8,7 +8,7 @@ const { sendEmail, buildOtpHtml } = require('./sendEmail');
 
 const app = express();
 
-const clientOrigin = process.env.CLIENT_ORIGIN || 'http://localhost:5173';
+const clientOrigin = process.env.CLIENT_ORIGIN || 'https://dental-clinic-app-mauve.vercel.app';
 app.use(cors({
   origin: [clientOrigin, 'http://localhost:5173', 'http://localhost:3000', 'http://127.0.0.1:5173'],
   credentials: true,
