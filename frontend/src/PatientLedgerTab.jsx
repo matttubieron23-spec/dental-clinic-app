@@ -53,8 +53,11 @@ export default function PatientLedger({ patientId, isPatientView = false }) {
   const [receiptData, setReceiptData] = useState(null);
   const [loadingReceipt, setLoadingReceipt] = useState(false);
 
-  const loadLedger = async () => {
-    if (!patientId) return;
+const loadLedger = async () => {
+    if (!patientId) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError('');
     try {
@@ -71,7 +74,9 @@ export default function PatientLedger({ patientId, isPatientView = false }) {
   };
 
   useEffect(() => {
-    loadLedger();
+    if (patientId) {
+      loadLedger();
+    }
   }, [patientId]);
 
   const summary = useMemo(() => {
