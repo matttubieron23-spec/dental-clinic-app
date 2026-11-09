@@ -36,7 +36,7 @@ export default function ActivityLog({ onNavigatePatient }) {
         params.append('search', searchQuery.trim());
       }
 
-      const res = await api(`api/staff/activity-logs?${params.toString()}`);
+      const res = await api(`/api/staff/activity-logs?${params.toString()}`);
       setLogs(Array.isArray(res?.logs) ? res.logs : Array.isArray(res) ? res : []);
     } catch (err) {
       setError(err.message || 'Failed to load system activity logs.');
@@ -113,7 +113,6 @@ export default function ActivityLog({ onNavigatePatient }) {
   const renderBadge = (actionType) => {
     const t = String(actionType || '').trim();
 
-    // Red: Failed Login, Staff Account Deleted
     if (t === 'Failed Login' || t === 'Staff Account Deleted') {
       return (
         <span className="inline-flex items-center justify-center rounded-full border border-red-200 bg-red-50 px-2.5 py-0.5 text-xs font-semibold text-red-700">
@@ -122,7 +121,6 @@ export default function ActivityLog({ onNavigatePatient }) {
       );
     }
 
-    // Green: Patient Login, Staff Login, Created, Payment
     if (
       t === 'Patient Login' ||
       t === 'Login' ||
@@ -138,7 +136,6 @@ export default function ActivityLog({ onNavigatePatient }) {
       );
     }
 
-    // Yellow / Amber: Staff Role Changed, Inquiry, Booking, Chart Update
     if (
       t === 'Staff Role Changed' ||
       t === 'Inquiry' ||
@@ -152,7 +149,6 @@ export default function ActivityLog({ onNavigatePatient }) {
       );
     }
 
-    // Default neutral
     return (
       <span className="inline-flex items-center justify-center rounded-full border border-slate-200 bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-700">
         {t}
@@ -231,7 +227,7 @@ export default function ActivityLog({ onNavigatePatient }) {
         <div className="hidden grid-cols-[1.1fr_1.3fr_1.4fr_1.2fr_2fr] items-center gap-4 border-b border-slate-100 bg-slate-50/60 px-6 py-3 text-xs font-bold uppercase tracking-wider text-slate-400 md:grid">
           <span>Date &amp; Time</span>
           <span>Staff / Actor</span>
-          <span>Patient Name</span>
+          <span>Target / Device</span>
           <span>Action Type</span>
           <span>Description</span>
         </div>
@@ -249,57 +245,65 @@ export default function ActivityLog({ onNavigatePatient }) {
           </div>
         ) : (
           <div className="divide-y divide-slate-100">
-            {logs.map((log) => (
-              <div
-                key={log.id}
-                className="flex flex-col gap-2 px-6 py-4 hover:bg-slate-50/70 transition-colors md:grid md:grid-cols-[1.1fr_1.3fr_1.4fr_1.2fr_2fr] md:items-center md:gap-4"
-              >
-                {/* Date & Time */}
-                <div className="text-xs font-semibold tabular-nums text-slate-700">
-                  {log.log_date || ''}
-                  <span className="block text-[11px] font-normal text-slate-400">
-                    {log.log_time || ''}
-                  </span>
-                </div>
+            {logs.map((log) => {
+              const isPatientLogin = log.action_type === 'Patient Login';
 
-                {/* Staff / Actor */}
-                <div className="text-xs">
-                  {renderActor(log)}
-                </div>
+              return (
+                <div
+                  key={log.id}
+                  className="flex flex-col gap-2 px-6 py-4 hover:bg-slate-50/70 transition-colors md:grid md:grid-cols-[1.1fr_1.3fr_1.4fr_1.2fr_2fr] md:items-center md:gap-4"
+                >
+                  {/* Date & Time */}
+                  <div className="text-xs font-semibold tabular-nums text-slate-700">
+                    {log.log_date || ''}
+                    <span className="block text-[11px] font-normal text-slate-400">
+                      {log.log_time || ''}
+                    </span>
+                  </div>
 
-                {/* Patient Profile Link */}
-                <div className="text-xs">
-                  {log.patient_id ? (
-                    <button
-                      type="button"
-                      onClick={() => handlePatientClick(log.patient_id)}
-                      className="group flex flex-col text-left cursor-pointer focus:outline-none"
-                    >
-                      <span className="font-bold text-blue-600 group-hover:text-blue-800 group-hover:underline">
-                        {log.patient_name || 'View Profile'}
+                  {/* Staff / Actor */}
+                  <div className="text-xs">
+                    {renderActor(log)}
+                  </div>
+
+                  {/* Target / Device Column */}
+                  <div className="text-xs">
+                    {isPatientLogin ? (
+                      <span className="font-medium text-slate-500 italic">
+                        {log.device_info || 'Unknown Device'}
                       </span>
-                      {log.patient_no && (
-                        <span className="font-mono text-[11px] text-slate-400">
-                          #{log.patient_no}
+                    ) : log.patient_id ? (
+                      <button
+                        type="button"
+                        onClick={() => handlePatientClick(log.patient_id)}
+                        className="group flex flex-col text-left cursor-pointer focus:outline-none"
+                      >
+                        <span className="font-bold text-blue-600 group-hover:text-blue-800 group-hover:underline">
+                          {log.patient_name || 'View Profile'}
                         </span>
-                      )}
-                    </button>
-                  ) : (
-                    <span className="text-slate-400">—</span>
-                  )}
-                </div>
+                        {log.patient_no && (
+                          <span className="font-mono text-[11px] text-slate-400">
+                            #{log.patient_no}
+                          </span>
+                        )}
+                      </button>
+                    ) : (
+                      <span className="text-slate-400">—</span>
+                    )}
+                  </div>
 
-                {/* Color-Coded Action Type Badge */}
-                <div>
-                  {renderBadge(log.action_type)}
-                </div>
+                  {/* Color-Coded Action Type Badge */}
+                  <div>
+                    {renderBadge(log.action_type)}
+                  </div>
 
-                {/* Description */}
-                <div className="text-xs leading-relaxed text-slate-700">
-                  {log.description}
+                  {/* Description */}
+                  <div className="text-xs leading-relaxed text-slate-700">
+                    {log.description}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </Card>

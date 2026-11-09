@@ -5,6 +5,8 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const pool = require('./db');
 const { sendEmail, buildOtpHtml } = require('./sendEmail');
+const { AsyncLocalStorage } = require('async_hooks');
+const requestContext = new AsyncLocalStorage();
 
 const app = express();
 
@@ -20,7 +22,7 @@ app.use(cors({
     credentials: true,
 }));
 app.use(express.json({ limit: '5mb' }));
-
+app.use((req, res, next) => requestContext.run(req, next));
 // ============================================================================
 // CENTRALIZED CLINIC SETTINGS
 // ============================================================================
@@ -219,25 +221,49 @@ function generateReferenceNo() {
 }
 
 // ============================================================================
-// ACTIVITY LOG HELPER
+// USER-AGENT DEVICE PARSER & ACTIVITY LOG HELPER
 // ============================================================================
-async function logActivity(staffId, actionType, targetId, description, patientId = null) {
+function parseUserAgent(uaString = '') {
+  const ua = String(uaString || '');
+  if (!ua) return 'Unknown Device';
+
+  let os = 'Unknown OS';
+  if (/windows nt/i.test(ua)) os = 'Windows';
+  else if (/android/i.test(ua)) os = 'Android';
+  else if (/iphone|ipad|ipod/i.test(ua)) os = 'iOS';
+  else if (/macintosh|mac os x/i.test(ua)) os = 'macOS';
+  else if (/linux/i.test(ua)) os = 'Linux';
+
+  let browser = 'Browser';
+  if (/edg\/|edge\//i.test(ua)) browser = 'Edge';
+  else if (/opr\/|opera/i.test(ua)) browser = 'Opera';
+  else if (/firefox\/|fxios/i.test(ua)) browser = 'Firefox';
+  else if (/chrome\/|crios/i.test(ua)) browser = 'Chrome';
+  else if (/safari\//i.test(ua)) browser = 'Safari';
+
+  return `${os} / ${browser}`;
+}
+
+async function logActivity(staffId, actionType, targetId, description, patientId = null, reqOverride = null) {
   try {
     const validTargetId =
       targetId && UUID_REGEX.test(String(targetId).trim()) ? String(targetId).trim() : null;
     const validPatientId =
       patientId && UUID_REGEX.test(String(patientId).trim()) ? String(patientId).trim() : null;
 
+    const activeReq = reqOverride || requestContext.getStore();
+    const rawUserAgent = activeReq?.headers?.['user-agent'] || '';
+    const deviceInfo = parseUserAgent(rawUserAgent);
+
     await pool.query(
-      `INSERT INTO activity_logs (staff_id, action_type, target_id, patient_id, description)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [staffId || null, actionType, validTargetId, validPatientId, description]
+      `INSERT INTO activity_logs (staff_id, action_type, target_id, patient_id, description, device_info)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [staffId || null, actionType, validTargetId, validPatientId, description, deviceInfo]
     );
   } catch (err) {
     console.error('Failed to record activity log:', err.message);
   }
 }
-
 // ============================================================================
 // TERMINAL EMAIL LOGGERS
 // ============================================================================
@@ -4477,6 +4503,7 @@ app.get(
          al.action_type,
          al.target_id,
          al.description,
+         al.device_info,
          al.created_at,
          to_char(al.created_at AT TIME ZONE 'Asia/Manila', 'Mon DD, YYYY') AS log_date,
          to_char(al.created_at AT TIME ZONE 'Asia/Manila', 'HH12:MI AM') AS log_time,

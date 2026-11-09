@@ -1,12 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from './api';
-import {
-  Button,
-  Card,
-  EmptyState,
-  InputField,
-  Modal,
-} from './ui';
+import { formatFriendlyDate } from './config';
+import { Button, Card, EmptyState, InputField, Modal } from './ui';
 
 const formatPeso = (num) =>
   '₱' +
@@ -15,7 +10,7 @@ const formatPeso = (num) =>
     maximumFractionDigits: 2,
   });
 
-export default function Finance({ onNavigateToPatient }) {
+export default function Finance({ onOpenPatientProfile }) {
   const [summary, setSummary] = useState({
     revenue_today: 0,
     revenue_month: 0,
@@ -23,108 +18,102 @@ export default function Finance({ onNavigateToPatient }) {
     patients_with_balance: 0,
   });
   const [transactions, setTransactions] = useState([]);
+  const [outstandingList, setOutstandingList] = useState([]);
+
+  // Filter State: 'today' | 'month' | 'all'
+  const [period, setPeriod] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
+
   const [loadingSummary, setLoadingSummary] = useState(true);
   const [loadingTx, setLoadingTx] = useState(true);
   const [error, setError] = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [periodFilter, setPeriodFilter] = useState('all');
 
-  // Outstanding Balances Modal State
-  const [outstandingModalOpen, setOutstandingModalOpen] = useState(false);
-  const [outstandingList, setOutstandingList] = useState([]);
-  const [loadingOutstanding, setLoadingOutstanding] = useState(false);
-  const [outstandingSearch, setOutstandingSearch] = useState('');
-  const [outstandingError, setOutstandingError] = useState('');
+  // Receipt Modal State
+  const [receiptData, setReceiptData] = useState(null);
+  const [loadingReceiptId, setLoadingReceiptId] = useState(null);
 
-  // 1. Load Revenue & Balance Summary
-  const loadSummary = async () => {
+  const loadSummaryAndOutstanding = async () => {
     setLoadingSummary(true);
     try {
-      const data = await api('api/staff/finance/summary');
-      setSummary(data || {});
+      const [sumRes, outRes] = await Promise.all([
+        api('/api/staff/finance/summary'),
+        api('/api/staff/finance/outstanding'),
+      ]);
+      if (sumRes) setSummary(sumRes);
+      setOutstandingList(Array.isArray(outRes) ? outRes : []);
     } catch (err) {
-      setError(err.message || 'Failed to load financial overview.');
+      setError(err.message || 'Failed to load financial summary.');
     } finally {
       setLoadingSummary(false);
     }
   };
 
-  // 2. Load Payment Transactions
-  const loadTransactions = async () => {
+  const loadTransactions = async (activePeriod = period, q = searchQuery) => {
     setLoadingTx(true);
+    setError('');
     try {
-      const q = encodeURIComponent(searchQuery.trim());
-      const data = await api(`api/staff/finance/transactions?q=${q}&period=${periodFilter}`);
-      setTransactions(Array.isArray(data) ? data : []);
+      const params = new URLSearchParams();
+      params.set('period', activePeriod);
+      if (q.trim()) params.set('q', q.trim());
+
+      const rows = await api(`/api/staff/finance/transactions?${params.toString()}`);
+      setTransactions(Array.isArray(rows) ? rows : []);
     } catch (err) {
-      setError(err.message || 'Failed to load transaction history.');
+      setError(err.message || 'Failed to load transactions.');
     } finally {
       setLoadingTx(false);
     }
   };
 
-  // 3. Load Outstanding Balance Accounts
-  const loadOutstandingPatients = async () => {
-    setLoadingOutstanding(true);
-    setOutstandingError('');
-    try {
-      const data = await api('api/finance/outstanding');
-      setOutstandingList(Array.isArray(data) ? data : []);
-    } catch (err) {
-      setOutstandingError(err.message || 'Failed to load outstanding balance accounts.');
-    } finally {
-      setLoadingOutstanding(false);
-    }
-  };
-
   useEffect(() => {
-    loadSummary();
+    loadSummaryAndOutstanding();
   }, []);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      loadTransactions();
-    }, 250);
-    return () => clearTimeout(timer);
-  }, [searchQuery, periodFilter]);
+    const t = setTimeout(() => {
+      loadTransactions(period, searchQuery);
+    }, 200);
+    return () => clearTimeout(t);
+  }, [period, searchQuery]);
 
-  const handleOpenOutstandingModal = () => {
-    setOutstandingSearch('');
-    setOutstandingModalOpen(true);
-    loadOutstandingPatients();
-  };
-
-  const handlePatientClick = (patientId) => {
-    setOutstandingModalOpen(false);
-    sessionStorage.setItem('selected_patient_id', patientId);
-    if (typeof onNavigateToPatient === 'function') {
-      onNavigateToPatient(patientId);
-    } else {
-      window.location.href = '/staff?tab=patients';
+  const handleOpenReceipt = async (patientId, transactionId) => {
+    setLoadingReceiptId(transactionId);
+    setError('');
+    try {
+      const res = await api(
+        `/api/staff/patients/${patientId}/ledger/${transactionId}/receipt`
+      );
+      setReceiptData(res);
+    } catch (err) {
+      setError(err.message || 'Failed to load official receipt.');
+    } finally {
+      setLoadingReceiptId(null);
     }
   };
-
-  // Filter patients inside the modal by name or chart number
-  const filteredOutstanding = useMemo(() => {
-    const q = outstandingSearch.trim().toLowerCase();
-    if (!q) return outstandingList;
-    return outstandingList.filter(
-      (p) =>
-        (p.patient_name || '').toLowerCase().includes(q) ||
-        (p.patient_no || '').toLowerCase().includes(q)
-    );
-  }, [outstandingList, outstandingSearch]);
 
   return (
     <div className="space-y-6">
       {/* Page Header */}
-      <div className="border-b border-slate-200/80 pb-4">
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-          Clinic Finance &amp; Revenue
-        </h1>
-        <p className="mt-0.5 text-sm font-medium text-slate-500">
-          Track daily collections, monthly revenue, outstanding balances, and clinic-wide payment history.
-        </p>
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200/80 pb-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+            Clinic Finance &amp; Billing
+          </h1>
+          <p className="mt-0.5 text-sm font-medium text-slate-500">
+            Track daily collections, monthly revenue, official receipts, and unpaid patient balances.
+          </p>
+        </div>
+
+        <Button
+          type="button"
+          variant="secondary"
+          onClick={() => {
+            loadSummaryAndOutstanding();
+            loadTransactions(period, searchQuery);
+          }}
+        >
+          ↻ Refresh Finance
+        </Button>
       </div>
 
       {error && (
@@ -136,130 +125,163 @@ export default function Finance({ onNavigateToPatient }) {
         </div>
       )}
 
-      {/* Financial Summary Cards */}
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
-        {/* Card 1: Today's Revenue */}
-        <Card className="p-6">
-          <span className="block text-xs font-bold uppercase tracking-wider text-slate-400">
-            Total Revenue Today
-          </span>
-          <div className="mt-2 text-2xl font-extrabold text-slate-900 sm:text-3xl">
-            {loadingSummary ? '...' : formatPeso(summary.revenue_today)}
-          </div>
-          <p className="mt-1 text-xs font-medium text-slate-500">
-            Sum of all payments collected today
-          </p>
-        </Card>
-
-        {/* Card 2: Monthly Revenue */}
-        <Card className="p-6">
-          <span className="block text-xs font-bold uppercase tracking-wider text-slate-400">
-            Total Revenue This Month
-          </span>
-          <div className="mt-2 text-2xl font-extrabold text-blue-700 sm:text-3xl">
-            {loadingSummary ? '...' : formatPeso(summary.revenue_month)}
-          </div>
-          <p className="mt-1 text-xs font-medium text-slate-500">
-            Cumulative clinic collections this month
-          </p>
-        </Card>
-
-        {/* Card 3: Total Outstanding Balance (Clickable) */}
-        <Card
-          onClick={handleOpenOutstandingModal}
-          className="group relative cursor-pointer border-slate-200 p-6 transition-all duration-200 hover:-translate-y-0.5 hover:border-blue-400 hover:shadow-md active:translate-y-0"
+      {/* 1. CLICKABLE SUMMARY CARDS */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        {/* Clickable Card: Total Revenue Today */}
+        <button
+          type="button"
+          onClick={() => setPeriod('today')}
+          className={`group text-left rounded-2xl border p-6 transition-all cursor-pointer focus:outline-none ${
+            period === 'today'
+              ? 'border-blue-600 bg-blue-50/50 ring-2 ring-blue-600/20 shadow-sm'
+              : 'border-slate-200/80 bg-white hover:border-blue-300 hover:shadow-xs'
+          }`}
         >
           <div className="flex items-center justify-between">
-            <span className="block text-xs font-bold uppercase tracking-wider text-slate-400">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-500 group-hover:text-blue-600">
+              Total Revenue Today
+            </span>
+            <span
+              className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold ${
+                period === 'today'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-slate-100 text-slate-600 group-hover:bg-blue-100 group-hover:text-blue-700'
+              }`}
+            >
+              {period === 'today' ? 'Active Filter' : 'Click to Filter'}
+            </span>
+          </div>
+          <p className="mt-2 text-2xl font-extrabold tabular-nums text-slate-900 sm:text-3xl">
+            {loadingSummary ? '...' : formatPeso(summary.revenue_today)}
+          </p>
+          <span className="mt-1 block text-xs font-medium text-slate-500">
+            Payments collected today (Manila time)
+          </span>
+        </button>
+
+        {/* Clickable Card: Total Revenue This Month */}
+        <button
+          type="button"
+          onClick={() => setPeriod('month')}
+          className={`group text-left rounded-2xl border p-6 transition-all cursor-pointer focus:outline-none ${
+            period === 'month'
+              ? 'border-blue-600 bg-blue-50/50 ring-2 ring-blue-600/20 shadow-sm'
+              : 'border-slate-200/80 bg-white hover:border-blue-300 hover:shadow-xs'
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold uppercase tracking-wider text-emerald-700">
+              Total Revenue This Month
+            </span>
+            <span
+              className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold ${
+                period === 'month'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-emerald-50 text-emerald-700 group-hover:bg-blue-100 group-hover:text-blue-700'
+              }`}
+            >
+              {period === 'month' ? 'Active Filter' : 'Click to Filter'}
+            </span>
+          </div>
+          <p className="mt-2 text-2xl font-extrabold tabular-nums text-emerald-600 sm:text-3xl">
+            {loadingSummary ? '...' : formatPeso(summary.revenue_month)}
+          </p>
+          <span className="mt-1 block text-xs font-medium text-slate-500">
+            Cumulative clinic collections this month
+          </span>
+        </button>
+
+        {/* Card 3: Total Outstanding Balance */}
+        <Card noPadding className="border-amber-200/80 bg-amber-50/40 p-6">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold uppercase tracking-wider text-amber-800">
               Total Outstanding Balance
             </span>
-            <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-700 opacity-90 transition-opacity group-hover:opacity-100">
-              View Details →
+            <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-[10px] font-bold text-amber-800">
+              {summary.patients_with_balance || 0} Patients
             </span>
           </div>
-
-          <div className="mt-2 text-2xl font-extrabold text-red-600 sm:text-3xl">
+          <p className="mt-2 text-2xl font-extrabold tabular-nums text-amber-700 sm:text-3xl">
             {loadingSummary ? '...' : formatPeso(summary.total_outstanding_balance)}
-          </div>
-
-          <div className="mt-1 flex items-center justify-between text-xs text-slate-500">
-            <span>
-              {loadingSummary
-                ? '...'
-                : `${summary.patients_with_balance || 0} patient${
-                    summary.patients_with_balance === 1 ? '' : 's'
-                  } with unpaid balance`}
-            </span>
-            <span className="text-[11px] font-semibold text-blue-600 underline underline-offset-2 opacity-0 transition-opacity group-hover:opacity-100">
-              Click to view accounts
-            </span>
-          </div>
+          </p>
+          <span className="mt-1 block text-xs font-medium text-amber-800/80">
+            Unsettled balance from completed treatments
+          </span>
         </Card>
       </div>
 
-      {/* Transaction History Section */}
-      <Card noPadding className="p-6">
-        <div className="grid grid-cols-1 items-end gap-4 sm:grid-cols-[1fr_200px_auto]">
-          <InputField
-            label="Search Payment History"
-            type="text"
-            placeholder="Search payments by patient name or chart no..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-
-          <InputField
-            label="Filter Period"
-            as="select"
-            value={periodFilter}
-            onChange={(e) => setPeriodFilter(e.target.value)}
-          >
-            <option value="all">All Transactions</option>
-            <option value="today">Today Only</option>
-            <option value="week">This Week</option>
-            <option value="month">This Month</option>
-          </InputField>
-
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() => {
-              loadSummary();
-              loadTransactions();
-            }}
-          >
-            ↻ Refresh
-          </Button>
-        </div>
-      </Card>
-
-      {/* Transactions Table */}
+      {/* 2. VISIBLE FILTER BAR & TRANSACTIONS TABLE */}
       <Card noPadding className="overflow-hidden">
-        <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/60 px-6 py-4 text-xs font-semibold text-slate-500">
-          <span>
-            Showing <strong>{transactions.length}</strong> payment transaction
-            {transactions.length === 1 ? '' : 's'}
-          </span>
-          <span>Official receipts recorded in Manila Time</span>
+        <div className="flex flex-col justify-between gap-4 border-b border-slate-100 bg-slate-50/60 p-6 sm:flex-row sm:items-center">
+          <div className="space-y-1">
+            <h2 className="text-base font-bold text-slate-900">
+              Payment Transactions History
+            </h2>
+
+            {/* Visible Filter UI: "Showing: [Today / This Month / All Time]" */}
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <span className="text-xs font-bold text-slate-600">Showing:</span>
+              <div className="inline-flex rounded-xl border border-slate-200/90 bg-white p-1 shadow-2xs">
+                {[
+                  { id: 'today', label: 'Today' },
+                  { id: 'month', label: 'This Month' },
+                  { id: 'all', label: 'All Time' },
+                ].map((tab) => {
+                  const active = period === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setPeriod(tab.id)}
+                      className={`rounded-lg px-3 py-1 text-xs font-bold transition-all cursor-pointer ${
+                        active
+                          ? 'bg-blue-600 text-white shadow-2xs'
+                          : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          <div className="w-full sm:w-72">
+            <InputField
+              label=""
+              type="text"
+              placeholder="Search patient name or chart no..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
         </div>
 
-        <div className="hidden grid-cols-[1.2fr_1.8fr_1fr_1.8fr_1fr] items-center gap-4 border-b border-slate-100 bg-slate-50/40 px-6 py-3 text-xs font-bold uppercase tracking-wider text-slate-400 md:grid">
+        <div className="hidden grid-cols-[1fr_1.6fr_1.8fr_0.9fr_1fr_1fr] items-center gap-4 border-b border-slate-100 bg-slate-50/40 px-6 py-3 text-xs font-bold uppercase tracking-wider text-slate-400 md:grid">
           <span>Date &amp; Time</span>
-          <span>Patient Name</span>
-          <span>Method</span>
+          <span>Patient</span>
           <span>Description</span>
+          <span>Method</span>
           <span className="text-right">Amount Paid</span>
+          <span className="text-right">Receipt</span>
         </div>
 
         {loadingTx ? (
           <p className="p-12 text-center text-xs font-medium text-slate-500">
-            Loading clinic payment records...
+            Loading payment transactions...
           </p>
         ) : transactions.length === 0 ? (
           <div className="p-8">
             <EmptyState
-              title="No payment records found"
-              description="Payments recorded from patient dental charts and ledger checkouts will appear here."
+              title={
+                period === 'today'
+                  ? 'No payments recorded today'
+                  : period === 'month'
+                  ? 'No payments recorded this month'
+                  : 'No payment transactions found'
+              }
+              description="Try switching the filter to 'All Time' or clearing your search query."
             />
           </div>
         ) : (
@@ -267,42 +289,59 @@ export default function Finance({ onNavigateToPatient }) {
             {transactions.map((tx) => (
               <div
                 key={tx.id}
-                className="flex flex-col gap-2 px-6 py-4 transition-colors hover:bg-slate-50/60 md:grid md:grid-cols-[1.2fr_1.8fr_1fr_1.8fr_1fr] md:items-center md:gap-4"
+                className="flex flex-col gap-2 px-6 py-4 hover:bg-slate-50/70 md:grid md:grid-cols-[1fr_1.6fr_1.8fr_0.9fr_1fr_1fr] md:items-center md:gap-4"
               >
-                <div>
-                  <span className="block text-xs font-bold text-slate-900">
-                    {tx.date}
+                <div className="text-xs">
+                  <span className="block font-bold text-slate-800">
+                    {tx.date ? formatFriendlyDate(tx.date, false) : '-'}
                   </span>
-                  <span className="block text-[11px] font-medium text-slate-500">
-                    {tx.time}
+                  <span className="text-[11px] font-medium text-slate-400">
+                    {tx.time || ''}
                   </span>
                 </div>
 
-                <div>
+                <div className="min-w-0">
                   <button
                     type="button"
-                    onClick={() => handlePatientClick(tx.patient_id)}
-                    className="text-left text-sm font-bold text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
+                    onClick={() => onOpenPatientProfile?.(tx.patient_id)}
+                    className="truncate text-left text-sm font-bold text-blue-600 hover:underline cursor-pointer"
                   >
                     {tx.patient_name}
                   </button>
-                  <span className="block font-mono text-[11px] text-slate-400">
-                    #{tx.patient_no || 'P-000000'}
+                  <span className="block font-mono text-[11px] font-semibold text-slate-400">
+                    {tx.patient_no}
+                  </span>
+                </div>
+
+                <div className="min-w-0">
+                  <p className="truncate text-xs font-semibold text-slate-800">
+                    {tx.description || 'Payment'}
+                  </p>
+                  <span className="block text-[11px] text-slate-400">
+                    Received by: {tx.received_by || 'Clinic Staff'}
                   </span>
                 </div>
 
                 <div>
-                  <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
+                  <span className="inline-flex items-center rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-semibold text-slate-700">
                     {tx.payment_method || 'Cash'}
                   </span>
                 </div>
 
-                <div className="truncate text-xs text-slate-600">
-                  {tx.description || 'Payment settlement'}
+                <div className="text-sm font-extrabold tabular-nums text-emerald-600 md:text-right">
+                  {formatPeso(tx.amount)}
                 </div>
 
-                <div className="text-sm font-extrabold text-emerald-600 md:text-right">
-                  +{formatPeso(tx.amount)}
+                <div className="flex md:justify-end">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={loadingReceiptId === tx.id}
+                    onClick={() => handleOpenReceipt(tx.patient_id, tx.id)}
+                    className="!h-8 !min-h-0 !px-3 !py-1 !text-xs"
+                  >
+                    {loadingReceiptId === tx.id ? 'Loading...' : '⎙ Receipt'}
+                  </Button>
                 </div>
               </div>
             ))}
@@ -310,127 +349,137 @@ export default function Finance({ onNavigateToPatient }) {
         )}
       </Card>
 
-      {/* =================================================================== */}
-      {/* MODAL: PATIENTS WITH OUTSTANDING BALANCES */}
-      {/* =================================================================== */}
-      {outstandingModalOpen && (
-        <Modal
-          title="Patients with Outstanding Balances"
-          subtitle="Active clinic charts with remaining unpaid treatment charges"
-          maxWidth="max-w-3xl"
-          onClose={() => setOutstandingModalOpen(false)}
-        >
-          <div className="space-y-4">
-            {outstandingError && (
+      {/* 3. PATIENTS WITH OUTSTANDING BALANCES */}
+      {outstandingList.length > 0 && (
+        <Card noPadding className="overflow-hidden">
+          <div className="border-b border-slate-100 bg-amber-50/50 px-6 py-4">
+            <h2 className="text-sm font-bold text-slate-900">
+              Patients with Outstanding Balances ({outstandingList.length})
+            </h2>
+            <p className="text-xs font-medium text-slate-500">
+              Click any patient below to open their chart and record a payment.
+            </p>
+          </div>
+          <div className="divide-y divide-slate-100">
+            {outstandingList.map((item) => (
               <div
-                role="alert"
-                className="rounded-xl border border-red-200 bg-red-50 p-3.5 text-xs font-semibold text-red-700"
+                key={item.patient_id}
+                className="flex flex-wrap items-center justify-between gap-4 px-6 py-3.5 hover:bg-slate-50/70"
               >
-                {outstandingError}
-              </div>
-            )}
-
-            {/* Search filter in modal */}
-            <div className="flex items-center justify-between gap-4">
-              <div className="flex-1">
-                <InputField
-                  placeholder="Search patient by name or chart number..."
-                  value={outstandingSearch}
-                  onChange={(e) => setOutstandingSearch(e.target.value)}
-                  autoFocus
-                />
-              </div>
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={loadOutstandingPatients}
-                disabled={loadingOutstanding}
-              >
-                ↻ Refresh
-              </Button>
-            </div>
-
-            {/* Patients with Balance Table */}
-            <div className="max-h-[60vh] overflow-y-auto rounded-xl border border-slate-200">
-              {loadingOutstanding ? (
-                <p className="p-10 text-center text-xs font-medium text-slate-500">
-                  Scanning ledger records for unpaid accounts...
-                </p>
-              ) : filteredOutstanding.length === 0 ? (
-                <div className="p-8">
-                  <EmptyState
-                    title="All patients are fully paid up!"
-                    description={
-                      outstandingSearch
-                        ? `No outstanding balance records match "${outstandingSearch}".`
-                        : 'Every active clinic patient currently has a zero or settled ledger balance.'
-                    }
-                  />
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => onOpenPatientProfile?.(item.patient_id)}
+                    className="text-sm font-bold text-slate-900 hover:text-blue-600 cursor-pointer"
+                  >
+                    {item.patient_name}
+                  </button>
+                  <p className="text-xs font-medium text-slate-500">
+                    <span className="font-mono font-bold text-blue-600">
+                      {item.patient_no}
+                    </span>{' '}
+                    · {item.phone || 'No phone'}
+                  </p>
                 </div>
-              ) : (
-                <table className="w-full text-left text-xs">
-                  <thead className="sticky top-0 border-b border-slate-200 bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                    <tr>
-                      <th className="px-4 py-3">Chart No.</th>
-                      <th className="px-4 py-3">Patient Name</th>
-                      <th className="px-4 py-3">Contact</th>
-                      <th className="px-4 py-3 text-right">Outstanding Balance</th>
-                      <th className="px-4 py-3 text-right">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 bg-white">
-                    {filteredOutstanding.map((p) => (
-                      <tr
-                        key={p.patient_id}
-                        className="transition-colors hover:bg-red-50/30"
-                      >
-                        <td className="whitespace-nowrap px-4 py-3.5 font-mono font-bold text-blue-600">
-                          {p.patient_no}
-                        </td>
-                        <td className="px-4 py-3.5">
-                          <button
-                            type="button"
-                            onClick={() => handlePatientClick(p.patient_id)}
-                            className="text-left font-bold text-slate-900 hover:text-blue-600 hover:underline cursor-pointer"
-                          >
-                            {p.patient_name}
-                          </button>
-                        </td>
-                        <td className="px-4 py-3.5 text-slate-500">
-                          {p.phone || '-'}
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-3.5 text-right font-extrabold text-red-600">
-                          {formatPeso(p.total_outstanding_amount)}
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-3.5 text-right">
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            onClick={() => handlePatientClick(p.patient_id)}
-                            className="!h-7 !min-h-0 !px-2.5 !py-0.5 !text-[11px] font-bold"
-                          >
-                            Open Ledger →
-                          </Button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
+                <div className="flex items-center gap-3">
+                  <span className="text-sm font-extrabold tabular-nums text-red-600">
+                    {formatPeso(item.total_outstanding_amount)}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="!h-8 !min-h-0 !px-3 !py-1 !text-xs"
+                    onClick={() => onOpenPatientProfile?.(item.patient_id)}
+                  >
+                    Open Ledger →
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {/* OFFICIAL RECEIPT MODAL */}
+      {receiptData && (
+        <Modal
+          title={`Official Receipt · ${receiptData.receipt_no}`}
+          subtitle="Printable clinic payment acknowledgment"
+          onClose={() => setReceiptData(null)}
+        >
+          <div className="space-y-4 text-xs text-slate-800">
+            <div className="border-b border-slate-200 pb-3 text-center">
+              <h3 className="text-base font-extrabold text-slate-900">
+                {receiptData.clinic?.name}
+              </h3>
+              <p className="text-slate-500">{receiptData.clinic?.address}</p>
+              <p className="text-slate-500">
+                Tel: {receiptData.clinic?.phone} · {receiptData.clinic?.email}
+              </p>
             </div>
 
-            {/* Modal Footer */}
-            <div className="flex items-center justify-between border-t border-slate-100 pt-3">
-              <span className="text-xs font-medium text-slate-500">
-                Found <strong>{filteredOutstanding.length}</strong> patient
-                {filteredOutstanding.length === 1 ? '' : 's'} with unpaid balances
-              </span>
+            <div className="grid grid-cols-2 gap-3 rounded-xl bg-slate-50 p-3.5">
+              <div>
+                <span className="block font-medium text-slate-400">Patient Name</span>
+                <strong className="font-bold text-slate-900">
+                  {receiptData.patient?.name}
+                </strong>
+                <span className="block font-mono text-[11px] text-slate-500">
+                  Chart #{receiptData.patient?.patient_no}
+                </span>
+              </div>
+              <div className="text-right">
+                <span className="block font-medium text-slate-400">Receipt No. &amp; Date</span>
+                <strong className="font-mono font-bold text-blue-600">
+                  {receiptData.receipt_no}
+                </strong>
+                <span className="block text-[11px] text-slate-500">
+                  {receiptData.date} {receiptData.time || ''}
+                </span>
+              </div>
+            </div>
+
+            <div className="space-y-2 rounded-xl border border-slate-200 p-4">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Description:</span>
+                <span className="font-bold text-slate-900">
+                  {receiptData.line_item?.description}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Payment Method:</span>
+                <span className="font-semibold text-slate-800">
+                  {receiptData.line_item?.payment_method}
+                </span>
+              </div>
+              <div className="flex justify-between border-t border-slate-200 pt-2 text-sm">
+                <span className="font-bold text-slate-900">Net Amount Paid:</span>
+                <span className="font-extrabold text-emerald-600">
+                  {formatPeso(receiptData.line_item?.amount_paid)}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Remaining Balance:</span>
+                <span className="font-bold text-slate-800">
+                  {formatPeso(receiptData.line_item?.remaining_balance)}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2.5 border-t border-slate-100 pt-3 print:hidden">
               <Button
                 type="button"
                 variant="secondary"
-                onClick={() => setOutstandingModalOpen(false)}
+                onClick={() => setReceiptData(null)}
               >
                 Close
+              </Button>
+              <Button
+                type="button"
+                variant="primary"
+                onClick={() => window.print()}
+              >
+                ⎙ Print Receipt
               </Button>
             </div>
           </div>
