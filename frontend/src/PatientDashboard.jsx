@@ -262,7 +262,7 @@ export default function PatientDashboard({ patientUser, onGoBook }) {
   const [financialHistory, setFinancialHistory] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [selectedReceipt, setSelectedReceipt] = useState(null);
-  const [loadingReceiptId, setLoadingReceiptId] =State(null);
+  const [loadingReceiptId, setLoadingReceiptId] = useState(null);
 
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
