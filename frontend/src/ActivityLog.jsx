@@ -5,15 +5,22 @@ import { Button, Card, EmptyState, InputField } from './ui';
 const ACTION_FILTERS = [
   { value: 'All Actions', label: 'All Action Types' },
   { value: 'Patient Login', label: 'Patient Login' },
-  { value: 'Failed Login', label: 'Failed Login' },
-  { value: 'Login', label: 'Staff Login' },
-  { value: 'Inquiry', label: 'Inquiry' },
-  { value: 'Booking', label: 'Booking' },
-  { value: 'Payment', label: 'Payment' },
+  { value: 'Staff Login', label: 'Staff Login' },
+  { value: 'Failed Staff Login', label: 'Failed Staff Login' },
+  { value: 'Failed Login', label: 'Failed Login (All)' },
+  { value: 'Treatment Completed', label: 'Treatment Completed' },
   { value: 'Chart Update', label: 'Chart Update' },
+  { value: 'Payment', label: 'Payment' },
+  { value: 'Booking', label: 'Booking' },
+  { value: 'Appointment Cancelled', label: 'Appointment Cancelled' },
+  { value: 'Request Declined', label: 'Request Declined' },
   { value: 'Add Patient', label: 'Add Patient' },
+  { value: 'Patient Deactivated', label: 'Patient Deactivated' },
+  { value: 'Patient Reactivated', label: 'Patient Reactivated' },
+  { value: 'Inquiry', label: 'Inquiry' },
   { value: 'Staff Account Created', label: 'Staff Account Created' },
   { value: 'Staff Role Changed', label: 'Staff Role Changed' },
+  { value: 'Staff Password Reset', label: 'Staff Password Reset' },
   { value: 'Staff Account Deleted', label: 'Staff Account Deleted' },
 ];
 
@@ -77,12 +84,16 @@ export default function ActivityLog({ onNavigatePatient }) {
       );
     }
 
-    if (log.action_type === 'Inquiry' || log.action_type === 'Failed Login') {
+    if (
+      log.action_type === 'Inquiry' ||
+      log.action_type === 'Failed Login' ||
+      log.action_type === 'Failed Staff Login'
+    ) {
       return (
         <div>
           <span className="block font-semibold text-slate-700">System</span>
           <span className="block text-[11px] font-medium text-slate-400">
-            {log.action_type === 'Failed Login' ? 'Security / Auth' : 'Web Form'}
+            {log.action_type === 'Inquiry' ? 'Web Form' : 'Security / Auth'}
           </span>
         </div>
       );
@@ -90,6 +101,8 @@ export default function ActivityLog({ onNavigatePatient }) {
 
     if (
       log.action_type === 'Patient Login' ||
+      log.action_type === 'Patient Deactivated' ||
+      log.action_type === 'Appointment Cancelled' ||
       log.action_type === 'Booking' ||
       log.action_type === 'Add Patient' ||
       log.patient_name
@@ -113,7 +126,15 @@ export default function ActivityLog({ onNavigatePatient }) {
   const renderBadge = (actionType) => {
     const t = String(actionType || '').trim();
 
-    if (t === 'Failed Login' || t === 'Staff Account Deleted') {
+    // Red: Failed Logins, Deletions, Deactivations, Cancellations, Declines
+    if (
+      t === 'Failed Login' ||
+      t === 'Failed Staff Login' ||
+      t === 'Staff Account Deleted' ||
+      t === 'Patient Deactivated' ||
+      t === 'Appointment Cancelled' ||
+      t === 'Request Declined'
+    ) {
       return (
         <span className="inline-flex items-center justify-center rounded-full border border-red-200 bg-red-50 px-2.5 py-0.5 text-xs font-semibold text-red-700">
           {t}
@@ -121,12 +142,16 @@ export default function ActivityLog({ onNavigatePatient }) {
       );
     }
 
+    // Green: Logins, Creations, Reactivations, Completed Treatments, Payments
     if (
       t === 'Patient Login' ||
+      t === 'Staff Login' ||
       t === 'Login' ||
       t === 'Staff Account Created' ||
       t === 'Add Patient' ||
       t === 'Create Patient' ||
+      t === 'Patient Reactivated' ||
+      t === 'Treatment Completed' ||
       t === 'Record Payment'
     ) {
       return (
@@ -136,10 +161,13 @@ export default function ActivityLog({ onNavigatePatient }) {
       );
     }
 
+    // Amber: Updates, Inquiries, Bookings, Password Resets
     if (
       t === 'Staff Role Changed' ||
+      t === 'Staff Password Reset' ||
       t === 'Inquiry' ||
       t === 'Booking' ||
+      t === 'Book Appointment' ||
       t === 'Edit Chart'
     ) {
       return (
@@ -266,10 +294,10 @@ export default function ActivityLog({ onNavigatePatient }) {
                     {renderActor(log)}
                   </div>
 
-                  {/* Target / Device Column */}
+                  {/* Target / Device */}
                   <div className="text-xs">
                     {isPatientLogin ? (
-                      <span className="font-medium text-slate-500 italic">
+                      <span className="text-xs font-medium text-slate-400">
                         {log.device_info || 'Unknown Device'}
                       </span>
                     ) : log.patient_id ? (
@@ -288,7 +316,9 @@ export default function ActivityLog({ onNavigatePatient }) {
                         )}
                       </button>
                     ) : (
-                      <span className="text-slate-400">—</span>
+                      <span className="text-xs font-medium text-slate-400">
+                        {log.device_info || '—'}
+                      </span>
                     )}
                   </div>
 

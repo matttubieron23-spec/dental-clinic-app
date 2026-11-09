@@ -3,11 +3,13 @@ const express = require('express');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const { AsyncLocalStorage } = require('async_hooks');
+const uaParserPkg = require('ua-parser-js');
+const UAParser = uaParserPkg.UAParser || uaParserPkg;
 const pool = require('./db');
 const { sendEmail, buildOtpHtml } = require('./sendEmail');
-const { AsyncLocalStorage } = require('async_hooks');
-const requestContext = new AsyncLocalStorage();
 
+const requestContext = new AsyncLocalStorage();
 const app = express();
 
 const clientOrigin = process.env.CLIENT_ORIGIN || 'https://dental-clinic-app-beige.vercel.app';
@@ -221,27 +223,25 @@ function generateReferenceNo() {
 }
 
 // ============================================================================
-// USER-AGENT DEVICE PARSER & ACTIVITY LOG HELPER
+// ACTIVITY LOG HELPER (WITH UA-PARSER-JS DEVICE TRACKING)
 // ============================================================================
-function parseUserAgent(uaString = '') {
-  const ua = String(uaString || '');
-  if (!ua) return 'Unknown Device';
+function extractDeviceInfo(req) {
+  try {
+    const uaString = req?.headers?.['user-agent'];
+    if (!uaString) return 'Unknown Device';
 
-  let os = 'Unknown OS';
-  if (/windows nt/i.test(ua)) os = 'Windows';
-  else if (/android/i.test(ua)) os = 'Android';
-  else if (/iphone|ipad|ipod/i.test(ua)) os = 'iOS';
-  else if (/macintosh|mac os x/i.test(ua)) os = 'macOS';
-  else if (/linux/i.test(ua)) os = 'Linux';
+    const parser = new UAParser(uaString);
+    const result = parser.getResult();
+    const osName = result?.os?.name?.trim();
+    const browserName = result?.browser?.name?.trim();
 
-  let browser = 'Browser';
-  if (/edg\/|edge\//i.test(ua)) browser = 'Edge';
-  else if (/opr\/|opera/i.test(ua)) browser = 'Opera';
-  else if (/firefox\/|fxios/i.test(ua)) browser = 'Firefox';
-  else if (/chrome\/|crios/i.test(ua)) browser = 'Chrome';
-  else if (/safari\//i.test(ua)) browser = 'Safari';
-
-  return `${os} / ${browser}`;
+    if (osName && browserName) {
+      return `${osName} / ${browserName}`;
+    }
+    return 'Unknown Device';
+  } catch {
+    return 'Unknown Device';
+  }
 }
 
 async function logActivity(staffId, actionType, targetId, description, patientId = null, reqOverride = null) {
@@ -252,8 +252,7 @@ async function logActivity(staffId, actionType, targetId, description, patientId
       patientId && UUID_REGEX.test(String(patientId).trim()) ? String(patientId).trim() : null;
 
     const activeReq = reqOverride || requestContext.getStore();
-    const rawUserAgent = activeReq?.headers?.['user-agent'] || '';
-    const deviceInfo = parseUserAgent(rawUserAgent);
+    const deviceInfo = extractDeviceInfo(activeReq);
 
     await pool.query(
       `INSERT INTO activity_logs (staff_id, action_type, target_id, patient_id, description, device_info)
@@ -476,8 +475,14 @@ app.post('/api/auth/login', rateLimit({ windowMs: 60000, max: 15 }), wrap(async 
     'SELECT * FROM users WHERE LOWER(email) = $1 AND is_active = true',
     [cleanEmail]
   );
-  const u = r.rows[0];
+ const u = r.rows[0];
   if (!u || !(await bcrypt.compare(password || '', u.password_hash))) {
+    await logActivity(
+      u ? u.id : null,
+      'Failed Staff Login',
+      u ? u.id : null,
+      `Failed staff login attempt for ${cleanEmail || 'unknown'}.`
+    );
     return res.status(401).json({ error: 'Wrong email or password' });
   }
 
@@ -520,11 +525,10 @@ app.post('/api/auth/login', rateLimit({ windowMs: 60000, max: 15 }), wrap(async 
 
   await logActivity(
     u.id,
-    'Login',
+    'Staff Login',
     u.id,
     `Logged in to Staff Portal as ${cleanRole} (${u.first_name} ${u.last_name} · ${u.email})`
   );
-
   const token = jwt.sign(
     { id: u.id, clinic_id: u.clinic_id, role: cleanRole, type: 'staff' },
     process.env.JWT_SECRET,
@@ -591,7 +595,7 @@ app.post('/api/auth/verify-otp', rateLimit({ windowMs: 60000, max: 15 }), wrap(a
 
   await logActivity(
     u.id,
-    'Login',
+    'Staff Login',
     u.id,
     `Verified email via OTP and logged in as ${cleanRole} (${u.first_name} ${u.last_name} · ${u.email})`
   );
@@ -1895,7 +1899,7 @@ app.put('/api/patients/deactivate', patientAuth, rateLimit({ windowMs: 60000, ma
 
   await logActivity(
     null,
-    'Account Deactivated',
+    'Patient Deactivated',
     patientId,
     `Patient deactivated their portal account (${r.rows[0].email}).`,
     patientId
@@ -1927,7 +1931,7 @@ app.put('/api/staff/patients/:id/reactivate', auth, wrap(async (req, res) => {
 
   await logActivity(
     req.user.id,
-    'Account Reactivated',
+    'Patient Reactivated',
     req.params.id,
     `Staff reactivated patient portal account (${r.rows[0].email}).`,
     req.params.id
@@ -2147,6 +2151,15 @@ app.put('/api/patient/appointments/requests/:id/cancel', patientAuth, rateLimit(
 
   const p = (await pool.query('SELECT first_name, last_name, email FROM patients WHERE id = $1', [req.patient.patient_id])).rows[0];
   printCancellationEmail(p.email, `${p.first_name} ${p.last_name}`, `Pending Request ${r.rows[0].reference_no}`, 'Cancelled by patient via dashboard.');
+
+  await logActivity(
+    null,
+    'Appointment Cancelled',
+    req.params.id,
+    `Patient ${p.first_name} ${p.last_name} cancelled pending appointment request #${r.rows[0].reference_no}.`,
+    req.patient.patient_id
+  );
+
   res.json({ ok: true, message: 'Request cancelled successfully.' });
 }));
 
@@ -2174,6 +2187,15 @@ app.put('/api/patient/appointments/:id/cancel', patientAuth, rateLimit({ windowM
   await pool.query(`UPDATE appointments SET status = 'cancelled', updated_at = now() WHERE id = $1`, [appt.id]);
   const p = (await pool.query('SELECT first_name, last_name, email FROM patients WHERE id = $1', [req.patient.patient_id])).rows[0];
   printCancellationEmail(p.email, `${p.first_name} ${p.last_name}`, 'Confirmed Appointment', `Scheduled for ${appt.manila_time}. Cancelled via dashboard.`);
+
+  await logActivity(
+    null,
+    'Appointment Cancelled',
+    appt.id,
+    `Patient ${p.first_name} ${p.last_name} cancelled confirmed appointment scheduled for ${appt.manila_time}.`,
+    req.patient.patient_id
+  );
+
   res.json({ ok: true, message: 'Appointment cancelled successfully.' });
 }));
 
@@ -3102,6 +3124,14 @@ app.post('/api/staff/appointment-requests/:id/decline', auth, wrap(async (req, r
     reason: val(reason) || 'No specific reason provided.',
   });
 
+  await logActivity(
+    req.user.id,
+    'Request Declined',
+    request.id,
+    `Declined appointment request #${request.reference_no} for ${p.first_name} ${p.last_name}${val(reason) ? ` (Reason: ${val(reason)})` : ''}.`,
+    request.patient_id
+  );
+
   res.json({ ok: true, message: 'Request declined.' });
 }));
 
@@ -3918,9 +3948,9 @@ app.put(
 
       await logActivity(
         req.user.id,
-        'Edit Chart',
+        'Treatment Completed',
         patientId,
-        `Marked ${current.procedure_name} on Tooth ${current.tooth_number} as Done (₱${finalPrice.toFixed(2)}) for ${patFormatted}`,
+        `Marked ${current.procedure_name} on Tooth ${current.tooth_number} as Done.`,
         patientId
       );
 
@@ -4456,7 +4486,11 @@ app.get(
       if (rawAction === 'Payment') {
         conditions.push(`al.action_type = 'Record Payment'`);
       } else if (rawAction === 'Chart Update') {
-        conditions.push(`al.action_type = 'Edit Chart'`);
+        conditions.push(`al.action_type IN ('Edit Chart', 'Treatment Completed')`);
+      } else if (rawAction === 'Staff Login' || rawAction === 'Login') {
+        conditions.push(`al.action_type IN ('Staff Login', 'Login')`);
+      } else if (rawAction === 'Failed Login') {
+        conditions.push(`al.action_type IN ('Failed Login', 'Failed Staff Login')`);
       } else if (rawAction === 'Add Patient') {
         conditions.push(`al.action_type IN ('Add Patient', 'Create Patient')`);
       } else if (rawAction === 'Booking') {
@@ -4758,6 +4792,14 @@ app.put(
     }
 
     const u = r.rows[0];
+
+    await logActivity(
+      req.user.id,
+      'Staff Password Reset',
+      targetId,
+      `Admin reset password for staff member ${u.first_name} ${u.last_name} (${u.email}).`
+    );
+
     res.json({
       ok: true,
       message: `Password reset successfully for ${u.first_name} ${u.last_name} (${u.email}).`,
