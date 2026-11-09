@@ -136,6 +136,7 @@ export default function Patients() {
     selected_conditions: [],
   });
   const [savingMed, setSavingMed] = useState(false);
+  const [reactivatingAccount, setReactivatingAccount] = useState(false);
 
   const loadPatients = async (q = searchQuery) => {
     setLoadingList(true);
@@ -194,7 +195,7 @@ export default function Patients() {
     setError('');
     let nextNo = '';
     try {
-      const res = await api('api/patients/next-no');
+      const res = await api('/api/patients/next-no');
       nextNo = res?.patient_no || '';
     } catch {}
 
@@ -257,7 +258,7 @@ export default function Patients() {
     setSavingNew(true);
     setNewFormErrors({});
     try {
-      const created = await api('api/patients', {
+      const created = await api('/api/patients', {
         method: 'POST',
         body: newForm,
       });
@@ -329,6 +330,25 @@ export default function Patients() {
       await Promise.all([loadPatientDetail(p.id), loadPatients()]);
     } catch (err) {
       setError(err.message || 'Failed to update archive status.');
+    }
+  };
+
+  const handleReactivateAccount = async () => {
+    const p = detailData?.patient;
+    if (!p) return;
+    setReactivatingAccount(true);
+    setError('');
+    setSuccess('');
+    try {
+      await api(`/api/staff/patients/${p.id}/reactivate`, {
+        method: 'PUT',
+      });
+      setSuccess('Patient portal account reactivated successfully.');
+      await Promise.all([loadPatientDetail(p.id), loadPatients()]);
+    } catch (err) {
+      setError(err.message || 'Failed to reactivate patient account.');
+    } finally {
+      setReactivatingAccount(false);
     }
   };
 
@@ -411,6 +431,16 @@ export default function Patients() {
 
           {pat && (
             <div className="flex flex-wrap items-center gap-2.5">
+              {pat.account_is_active === false && (
+                <Button
+                  type="button"
+                  variant="primary"
+                  disabled={reactivatingAccount}
+                  onClick={handleReactivateAccount}
+                >
+                  {reactivatingAccount ? 'Reactivating...' : 'Reactivate Account'}
+                </Button>
+              )}
               <Button
                 type="button"
                 variant={pat.is_active === false ? 'primary' : 'secondary'}
@@ -459,16 +489,21 @@ export default function Patients() {
                       <span className="rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-0.5 font-mono text-xs font-bold text-blue-700">
                         {pat.patient_no}
                       </span>
-                      {pat.email && (
-                        pat.is_claimed ? (
-                          <span className="inline-flex items-center rounded-md bg-emerald-50 px-2.5 py-0.5 text-xs font-bold text-emerald-700 border border-emerald-200">
+                      {pat.account_is_active === false ? (
+                        <span className="inline-flex items-center rounded-md border border-red-200 bg-red-50 px-2.5 py-0.5 text-xs font-bold text-red-700">
+                          Inactive
+                        </span>
+                      ) : (
+                        pat.email &&
+                        (pat.is_claimed ? (
+                          <span className="inline-flex items-center rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-bold text-emerald-700">
                             Portal Active
                           </span>
                         ) : (
-                          <span className="inline-flex items-center rounded-md bg-amber-50 px-2.5 py-0.5 text-xs font-bold text-amber-700 border border-amber-200">
+                          <span className="inline-flex items-center rounded-md border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-bold text-amber-700">
                             Portal Unclaimed
                           </span>
-                        )
+                        ))
                       )}
                       <Badge status={pat.has_consent ? 'approved' : 'pending'}>
                         {pat.has_consent ? 'RA 10173 Consent On File' : 'Consent Pending'}
@@ -1044,16 +1079,21 @@ export default function Patients() {
                     <span className="block truncate text-sm font-bold text-slate-900">
                       {p.last_name}, {p.first_name} {p.middle_name || ''}
                     </span>
-                    {p.email && (
-                      p.is_claimed ? (
-                        <span className="inline-flex items-center rounded-md bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-200">
+                    {p.account_is_active === false ? (
+                      <span className="inline-flex items-center rounded-md border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] font-bold text-red-700">
+                        Inactive
+                      </span>
+                    ) : (
+                      p.email &&
+                      (p.is_claimed ? (
+                        <span className="inline-flex items-center rounded-md border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
                           Active
                         </span>
                       ) : (
-                        <span className="inline-flex items-center rounded-md bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700 border border-amber-200">
+                        <span className="inline-flex items-center rounded-md border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700">
                           Unclaimed
                         </span>
-                      )
+                      ))
                     )}
                   </div>
                   <span className="block truncate text-xs font-medium text-slate-500">

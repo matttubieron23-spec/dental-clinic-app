@@ -231,6 +231,7 @@ export default function App() {
     const handleExpired = () => {
       clearPatientSession();
       setPatientUser(null);
+      setPatientMobileNavOpen(false);
       setMode('public');
       setAuthModal({ open: true, initialView: 'login', intended: '/dashboard' });
     };

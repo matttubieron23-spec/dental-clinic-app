@@ -1416,7 +1416,8 @@ app.post('/api/patient/auth/login', rateLimit({ windowMs: 60000, max: 10 }), wra
   const cleanEmail = (email || '').toLowerCase().trim();
 
   const r = await pool.query(
-    `SELECT pa.id, pa.patient_id, pa.clinic_id, pa.email, pa.password_hash, pa.is_email_verified,
+    `SELECT pa.id, pa.patient_id, pa.clinic_id, pa.email, pa.password_hash,
+            pa.is_email_verified, COALESCE(pa.is_active, true) AS is_active,
             p.first_name, p.middle_name, p.last_name, p.patient_no
      FROM patient_accounts pa
      JOIN patients p ON p.id = pa.patient_id
@@ -1434,6 +1435,13 @@ app.post('/api/patient/auth/login', rateLimit({ windowMs: 60000, max: 10 }), wra
       u ? u.patient_id : null
     );
     return res.status(401).json({ error: 'Invalid email or password' });
+  }
+
+  // Block login if password is correct but portal account is deactivated
+  if (u.is_active === false) {
+    return res.status(403).json({
+      error: 'Your account is currently deactivated. Please contact Smile Avenue Dental Clinic to restore access.',
+    });
   }
 
   if (!u.is_email_verified) {
@@ -1841,6 +1849,68 @@ app.put('/api/patient/me/profile', patientAuth, rateLimit({ windowMs: 60000, max
     params
   );
   res.json({ ok: true, message: 'Profile updated successfully.' });
+}));
+
+// Patient Portal: Deactivate Own Account (Soft Delete)
+app.put('/api/patients/deactivate', patientAuth, rateLimit({ windowMs: 60000, max: 5 }), wrap(async (req, res) => {
+  const patientId = req.patient.patient_id;
+
+  const r = await pool.query(
+    `UPDATE patient_accounts
+     SET is_active = false, updated_at = now()
+     WHERE patient_id = $1
+     RETURNING id, email`,
+    [patientId]
+  );
+
+  if (!r.rowCount) {
+    return res.status(404).json({ error: 'Patient account not found.' });
+  }
+
+  await logActivity(
+    null,
+    'Account Deactivated',
+    patientId,
+    `Patient deactivated their portal account (${r.rows[0].email}).`,
+    patientId
+  );
+
+  res.json({
+    ok: true,
+    message: 'Your account has been deactivated.',
+  });
+}));
+
+// Staff Portal: Reactivate Patient Portal Account
+app.put('/api/staff/patients/:id/reactivate', auth, wrap(async (req, res) => {
+  if (!(await ownsPatient(req, req.params.id))) {
+    return res.status(404).json({ error: 'Patient not found' });
+  }
+
+  const r = await pool.query(
+    `UPDATE patient_accounts
+     SET is_active = true, updated_at = now()
+     WHERE patient_id = $1
+     RETURNING id, email`,
+    [req.params.id]
+  );
+
+  if (!r.rowCount) {
+    return res.status(404).json({ error: 'No online portal account found for this patient.' });
+  }
+
+  await logActivity(
+    req.user.id,
+    'Account Reactivated',
+    req.params.id,
+    `Staff reactivated patient portal account (${r.rows[0].email}).`,
+    req.params.id
+  );
+
+  res.json({
+    ok: true,
+    message: 'Patient portal account reactivated successfully.',
+  });
 }));
 
 app.post('/api/patient/me/medical-history', patientAuth, rateLimit({ windowMs: 60000, max: 10 }), wrap(async (req, res) => {
@@ -2645,7 +2715,7 @@ app.get('/api/staff/patients/:id', auth, wrap(async (req, res) => {
             p.civil_status, p.occupation, p.religion,
             p.guardian_name, p.guardian_phone, p.notes, p.is_active,
             to_char(p.created_at AT TIME ZONE 'Asia/Manila', 'YYYY-MM-DD') AS registered_date,
-            COALESCE(pa.is_claimed, false) AS is_claimed,
+            COALESCE(pa.is_claimed, false) AS is_claimed,COALESCE(pa.is_active, true) AS account_is_active,
             (EXISTS (SELECT 1 FROM consents ct WHERE ct.patient_id = p.id AND ct.consent_type = 'terms_and_conditions')
              AND EXISTS (SELECT 1 FROM consents cp WHERE cp.patient_id = p.id AND cp.consent_type = 'privacy_policy')) AS has_consent,
             lc.version AS consent_version,
@@ -3206,7 +3276,7 @@ app.get('/api/patients', auth, wrap(async (req, res) => {
             p.address, p.barangay, p.city, p.province, p.civil_status, p.occupation,
             p.guardian_name, p.guardian_phone, p.tags, p.is_active,
             to_char(p.created_at AT TIME ZONE 'Asia/Manila', 'YYYY-MM-DD') AS registered_date,
-            COALESCE(pa.is_claimed, false) AS is_claimed,
+            COALESCE(pa.is_claimed, false) AS is_claimed,COALESCE(pa.is_active, true) AS account_is_active,
             (SELECT to_char(MAX(a.starts_at AT TIME ZONE 'Asia/Manila'), 'YYYY-MM-DD')
                FROM appointments a WHERE a.patient_id = p.id AND a.status = 'completed') AS last_visit,
             (SELECT COALESCE(SUM(b.balance), 0) FROM invoice_balances b

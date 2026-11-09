@@ -1,5 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import { patientApi, getPatientUser, setPatientSession, getPatientToken } from './api';
+import {
+  patientApi,
+  getPatientUser,
+  setPatientSession,
+  getPatientToken,
+  clearPatientSession,
+} from './api';
 import {
   CLINIC_SETTINGS,
   todayManila,
@@ -251,12 +257,12 @@ export default function PatientDashboard({ patientUser, onGoBook }) {
   const [loadingInitial, setLoadingInitial] = useState(true);
 
   // My History State
-  const [historySubTab, setHistorySubTab] = useState('clinical'); // 'clinical' | 'financial'
+  const [historySubTab, setHistorySubTab] = useState('clinical');
   const [clinicalHistory, setClinicalHistory] = useState([]);
   const [financialHistory, setFinancialHistory] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [selectedReceipt, setSelectedReceipt] = useState(null);
-  const [loadingReceiptId, setLoadingReceiptId] = useState(null);
+  const [loadingReceiptId, setLoadingReceiptId] =State(null);
 
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -286,6 +292,25 @@ export default function PatientDashboard({ patientUser, onGoBook }) {
   const [rSlots, setRSlots] = useState([]);
   const [rClosed, setRClosed] = useState(false);
   const [loadingAction, setLoadingAction] = useState(false);
+
+  // Deactivate Account Modal State
+  const [deactivateModalOpen, setDeactivateModalOpen] = useState(false);
+  const [deactivating, setDeactivating] = useState(false);
+
+  const handleDeactivateAccount = async () => {
+    setDeactivating(true);
+    setError('');
+    try {
+      await patientApi('/api/patients/deactivate', { method: 'PUT' });
+      clearPatientSession();
+      window.dispatchEvent(new CustomEvent('patient-session-expired'));
+    } catch (err) {
+      setError(err.message || 'Failed to deactivate account.');
+      setDeactivateModalOpen(false);
+    } finally {
+      setDeactivating(false);
+    }
+  };
 
   const loadAll = async () => {
     setLoadingInitial(true);
@@ -1757,6 +1782,25 @@ export default function PatientDashboard({ patientUser, onGoBook }) {
                       </div>
                     )}
                   </div>
+
+                  {/* Deactivate Account Region (Bottom of My Profile Tab) */}
+                  <div className="md:col-span-2 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-red-200 bg-red-50/50 p-6">
+                    <div>
+                      <h2 className="text-base font-bold text-red-900">
+                        Deactivate Portal Account
+                      </h2>
+                      <p className="mt-1 text-xs font-medium text-red-700">
+                        Restrict your access to the online patient portal. You will need to contact the clinic to reactivate it.
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="danger"
+                      onClick={() => setDeactivateModalOpen(true)}
+                    >
+                      Deactivate Account
+                    </Button>
+                  </div>
                 </div>
               )}
             </>
@@ -1972,12 +2016,7 @@ export default function PatientDashboard({ patientUser, onGoBook }) {
                   setCorrErrors({ ...corrErrors, new_value: undefined });
                 }}
                 error={corrErrors.new_value}
-              >
-                <option value="">Select gender</option>
-                <option value="male">Male</option>
-                <option value="female">Female</option>
-                <option value="other">Other</option>
-              </InputField>
+              />
             ) : (
               <InputField
                 label={`New ${
@@ -2125,6 +2164,38 @@ export default function PatientDashboard({ patientUser, onGoBook }) {
               </Button>
             </div>
           </form>
+        </Modal>
+      )}
+
+      {/* Deactivate Account Confirmation Modal */}
+      {deactivateModalOpen && (
+        <Modal
+          title="Deactivate Account"
+          onClose={() => !deactivating && setDeactivateModalOpen(false)}
+        >
+          <div className="space-y-6">
+            <p className="text-sm font-medium leading-relaxed text-slate-700">
+              Are you sure? Deactivating will restrict your access to the portal. You will need to contact the clinic to reactivate it.
+            </p>
+            <div className="flex justify-end gap-2.5">
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={deactivating}
+                onClick={() => setDeactivateModalOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="danger"
+                disabled={deactivating}
+                onClick={handleDeactivateAccount}
+              >
+                {deactivating ? 'Deactivating...' : 'Yes, Deactivate Account'}
+              </Button>
+            </div>
+          </div>
         </Modal>
       )}
     </div>
