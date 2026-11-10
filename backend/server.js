@@ -25,6 +25,7 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '5mb' }));
 app.use((req, res, next) => requestContext.run(req, next));
+
 // ============================================================================
 // CENTRALIZED CLINIC SETTINGS
 // ============================================================================
@@ -263,6 +264,7 @@ async function logActivity(staffId, actionType, targetId, description, patientId
     console.error('Failed to record activity log:', err.message);
   }
 }
+
 // ============================================================================
 // TERMINAL EMAIL LOGGERS
 // ============================================================================
@@ -475,7 +477,7 @@ app.post('/api/auth/login', rateLimit({ windowMs: 60000, max: 15 }), wrap(async 
     'SELECT * FROM users WHERE LOWER(email) = $1 AND is_active = true',
     [cleanEmail]
   );
- const u = r.rows[0];
+  const u = r.rows[0];
   if (!u || !(await bcrypt.compare(password || '', u.password_hash))) {
     await logActivity(
       u ? u.id : null,
@@ -529,6 +531,7 @@ app.post('/api/auth/login', rateLimit({ windowMs: 60000, max: 15 }), wrap(async 
     u.id,
     `Logged in to Staff Portal as ${cleanRole} (${u.first_name} ${u.last_name} · ${u.email})`
   );
+
   const token = jwt.sign(
     { id: u.id, clinic_id: u.clinic_id, role: cleanRole, type: 'staff' },
     process.env.JWT_SECRET,
@@ -666,266 +669,251 @@ app.post('/api/auth/resend-otp', rateLimit({ windowMs: 60000, max: 10 }), wrap(a
 }));
 
 // ============================================================================
-// PATIENT AUTHENTICATION & SECURITY QUESTIONS
+// PATIENT SIGN-UP DUPLICATE CHECKS & REGISTRATION ROUTES
 // ============================================================================
-app.post('/api/patient/auth/check-email', rateLimit({ windowMs: 60000, max: 10 }), wrap(async (req, res) => {
-  const email = val(req.body.email)?.toLowerCase();
-  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    return res.json({ exists: false });
-  }
-  const r = await pool.query(
-    'SELECT 1 FROM patient_accounts WHERE email = $1 AND is_email_verified = true',
-    [email]
-  );
-  res.json({ exists: r.rowCount > 0 });
-}));
 
-app.post('/api/patient/auth/register', rateLimit({ windowMs: 60000, max: 10 }), wrap(async (req, res) => {
-  const b = req.body;
-  const email = val(b.email)?.toLowerCase();
-  const password = val(b.password);
-  const firstName = val(b.first_name);
-  const lastName = val(b.last_name);
-  const birthDate = val(b.birth_date);
-  const sex = val(b.sex)?.toLowerCase();
-  const phone = val(b.phone);
-  const securityQuestion = val(b.security_question);
-  const rawSecurityAnswer = val(b.security_answer);
-
-  if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'Please enter a valid email address' });
-  if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters long' });
-  if (!firstName || !lastName) return res.status(400).json({ error: 'First and last name are required' });
-  if (!birthDate || !parsePlainDate(birthDate)) return res.status(400).json({ error: 'Valid date of birth is required' });
-
-  const bdate = new Date(`${birthDate}T00:00:00+08:00`);
-  if (isNaN(bdate.getTime()) || bdate > new Date()) {
-    return res.status(400).json({ error: 'Please enter a valid date of birth that is not in the future' });
-  }
-
-  if (!['male', 'female', 'other'].includes(sex)) return res.status(400).json({ error: 'Please select a valid gender' });
-  if (!phone || !isPhilippinePhone(phone)) {
-    return res.status(400).json({ error: 'Please enter a valid Philippine mobile number (e.g. 0917 123 4567)' });
-  }
-
-  if (!securityQuestion) {
-    return res.status(400).json({ error: 'Please select a security question for account recovery.' });
-  }
-  if (!rawSecurityAnswer || rawSecurityAnswer.length < 2) {
-    return res.status(400).json({ error: 'Please provide a security answer (at least 2 characters).' });
-  }
-
-  if (!b.terms_accepted) return res.status(400).json({ error: 'You must agree to the Terms and Conditions' });
-  if (!b.privacy_accepted) return res.status(400).json({ error: 'You must agree to the Privacy Policy (RA 10173)' });
-
-  const age = Math.floor((Date.now() - bdate.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
-  if (age < 18) {
-    if (!val(b.guardian_name)) {
-      return res.status(400).json({ error: 'Parent or guardian name is required for patients under 18' });
+// 1. Check if Email Exists in patient_accounts
+app.post(
+  ['/api/patients/check-email', '/api/patient/auth/check-email'],
+  rateLimit({ windowMs: 60000, max: 20 }),
+  wrap(async (req, res) => {
+    const email = val(req.body.email)?.toLowerCase();
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.json({ exists: false });
     }
-    if (!val(b.guardian_phone) || !isPhilippinePhone(b.guardian_phone)) {
-      return res.status(400).json({ error: 'A valid Philippine contact number for the parent or guardian is required for patients under 18' });
-    }
-  }
+    const r = await pool.query(
+      'SELECT 1 FROM patient_accounts WHERE LOWER(TRIM(email)) = $1 LIMIT 1',
+      [email]
+    );
+    res.json({ exists: r.rowCount > 0 });
+  })
+);
 
-  const med = b.medical_history || {};
-  if (med.answers && typeof med.answers === 'object') {
-    for (const [, answer] of Object.entries(med.answers)) {
-      if (answer && typeof answer === 'object' && answer.choice === 'yes' && (!answer.details || !String(answer.details).trim())) {
-        return res.status(400).json({ error: 'Please provide explanatory details for all affirmative ("Yes") medical history questions' });
+// 2. Strict Name Verification (First Name + Last Name, Ignoring Birthday)
+app.post(
+  ['/api/patients/check-name', '/api/patient/auth/check-name'],
+  rateLimit({ windowMs: 60000, max: 20 }),
+  wrap(async (req, res) => {
+    const firstName = val(req.body.first_name);
+    const lastName = val(req.body.last_name);
+    if (!firstName || !lastName) {
+      return res.json({ exists: false });
+    }
+
+    const clinicQuery = await pool.query(
+      'SELECT id FROM clinics WHERE is_active ORDER BY created_at LIMIT 1'
+    );
+    if (!clinicQuery.rowCount) {
+      return res.json({ exists: false });
+    }
+    const clinicId = clinicQuery.rows[0].id;
+
+    const r = await pool.query(
+      `SELECT 1
+       FROM patients
+       WHERE clinic_id = $1
+         AND is_active = true
+         AND LOWER(TRIM(first_name)) = LOWER(TRIM($2))
+         AND LOWER(TRIM(last_name)) = LOWER(TRIM($3))
+       LIMIT 1`,
+      [clinicId, firstName, lastName]
+    );
+
+    res.json({ exists: r.rowCount > 0 });
+  })
+);
+
+// 3. Final Patient Registration (Enforces Email & Strict Name Check with 409 Conflict)
+app.post(
+  ['/api/patients/register', '/api/patient/auth/register'],
+  rateLimit({ windowMs: 60000, max: 10 }),
+  wrap(async (req, res) => {
+    const b = req.body;
+    const email = val(b.email)?.toLowerCase();
+    const password = val(b.password);
+    const firstName = val(b.first_name);
+    const lastName = val(b.last_name);
+    const birthDate = val(b.birth_date);
+    const sex = val(b.sex)?.toLowerCase();
+    const phone = val(b.phone);
+    const securityQuestion = val(b.security_question);
+    const rawSecurityAnswer = val(b.security_answer);
+
+    if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'Please enter a valid email address' });
+    if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters long' });
+    if (!firstName || !lastName) return res.status(400).json({ error: 'First and last name are required' });
+    if (!birthDate || !parsePlainDate(birthDate)) return res.status(400).json({ error: 'Valid date of birth is required' });
+
+    const bdate = new Date(`${birthDate}T00:00:00+08:00`);
+    if (isNaN(bdate.getTime()) || bdate > new Date()) {
+      return res.status(400).json({ error: 'Please enter a valid date of birth that is not in the future' });
+    }
+
+    if (!['male', 'female', 'other'].includes(sex)) return res.status(400).json({ error: 'Please select a valid gender' });
+    if (!phone || !isPhilippinePhone(phone)) {
+      return res.status(400).json({ error: 'Please enter a valid Philippine mobile number (e.g. 0917 123 4567)' });
+    }
+
+    if (!securityQuestion) {
+      return res.status(400).json({ error: 'Please select a security question for account recovery.' });
+    }
+    if (!rawSecurityAnswer || rawSecurityAnswer.length < 2) {
+      return res.status(400).json({ error: 'Please provide a security answer (at least 2 characters).' });
+    }
+
+    if (!b.terms_accepted) return res.status(400).json({ error: 'You must agree to the Terms and Conditions' });
+    if (!b.privacy_accepted) return res.status(400).json({ error: 'You must agree to the Privacy Policy (RA 10173)' });
+
+    const age = Math.floor((Date.now() - bdate.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
+    if (age < 18) {
+      if (!val(b.guardian_name)) {
+        return res.status(400).json({ error: 'Parent or guardian name is required for patients under 18' });
+      }
+      if (!val(b.guardian_phone) || !isPhilippinePhone(b.guardian_phone)) {
+        return res.status(400).json({ error: 'A valid Philippine contact number for the parent or guardian is required for patients under 18' });
       }
     }
-  }
 
-  const clinicQuery = await pool.query('SELECT id FROM clinics WHERE is_active ORDER BY created_at LIMIT 1');
-  if (!clinicQuery.rowCount) return res.status(500).json({ error: 'No clinic configured in system' });
-  const clinicId = clinicQuery.rows[0].id;
+    const med = b.medical_history || {};
+    if (med.answers && typeof med.answers === 'object') {
+      for (const [, answer] of Object.entries(med.answers)) {
+        if (answer && typeof answer === 'object' && answer.choice === 'yes' && (!answer.details || !String(answer.details).trim())) {
+          return res.status(400).json({ error: 'Please provide explanatory details for all affirmative ("Yes") medical history questions' });
+        }
+      }
+    }
 
-  // Check if an account already exists with this email
-  const existingAcc = await pool.query('SELECT id, is_email_verified, is_claimed FROM patient_accounts WHERE email = $1', [email]);
-  if (existingAcc.rowCount > 0 && existingAcc.rows[0].is_email_verified && existingAcc.rows[0].is_claimed !== false) {
-    return res.status(409).json({ error: 'An account with this email already exists. Please log in.' });
-  }
+    const clinicQuery = await pool.query('SELECT id FROM clinics WHERE is_active ORDER BY created_at LIMIT 1');
+    if (!clinicQuery.rowCount) return res.status(500).json({ error: 'No clinic configured in system' });
+    const clinicId = clinicQuery.rows[0].id;
 
-  const cleanFirst = toTitleCase(firstName);
-  const cleanMiddle = val(b.middle_name) ? toTitleCase(b.middle_name) : null;
-  const cleanLast = toTitleCase(lastName);
-
-  // Check for existing patient record matching Name + DOB
-  const dupPatientRes = await pool.query(
-    `SELECT p.id, p.patient_no, pa.id AS account_id, pa.is_claimed, pa.is_email_verified
-     FROM patients p
-     LEFT JOIN patient_accounts pa ON pa.patient_id = p.id
-     WHERE p.clinic_id = $1
-       AND p.is_active = true
-       AND LOWER(TRIM(p.first_name)) = LOWER(TRIM($2))
-       AND COALESCE(LOWER(TRIM(p.middle_name)), '') = COALESCE(LOWER(TRIM($3)), '')
-       AND LOWER(TRIM(p.last_name)) = LOWER(TRIM($4))
-       AND p.birth_date::date = $5::date
-     LIMIT 1`,
-    [clinicId, cleanFirst, cleanMiddle || '', cleanLast, birthDate]
-  );
-
-  if (dupPatientRes.rowCount > 0) {
-    const dup = dupPatientRes.rows[0];
-    // If the patient already has an active, claimed portal account, reject registration
-    if (dup.account_id && dup.is_claimed !== false && dup.is_email_verified) {
+    // 1. Check if email already exists in patient_accounts
+    const existingAcc = await pool.query(
+      'SELECT id FROM patient_accounts WHERE LOWER(TRIM(email)) = $1 LIMIT 1',
+      [email]
+    );
+    if (existingAcc.rowCount > 0) {
       return res.status(409).json({
-        error: `A patient portal account already exists for ${cleanFirst} ${cleanLast}. Please log in or use "Forgot password".`,
+        error: 'This email is already registered. Please log in.',
       });
     }
-  }
 
-  const hashedSecurityAnswer = await bcrypt.hash(rawSecurityAnswer.toLowerCase().trim(), 10);
+    const cleanFirst = toTitleCase(firstName);
+    const cleanMiddle = val(b.middle_name) ? toTitleCase(b.middle_name) : null;
+    const cleanLast = toTitleCase(lastName);
 
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
+    // 2. Final Strict Name Verification (First Name + Last Name, ignoring birthday)
+    const dupPatientRes = await pool.query(
+      `SELECT id
+       FROM patients
+       WHERE clinic_id = $1
+         AND is_active = true
+         AND LOWER(TRIM(first_name)) = LOWER(TRIM($2))
+         AND LOWER(TRIM(last_name)) = LOWER(TRIM($3))
+       LIMIT 1`,
+      [clinicId, cleanFirst, cleanLast]
+    );
 
-    let patientId;
-    // Check if matching patient exists (by Name+DOB or by email/phone)
     if (dupPatientRes.rowCount > 0) {
-      patientId = dupPatientRes.rows[0].id;
-      await client.query(
-        `UPDATE patients
-         SET phone = $1, email = $2, address = $3, unit = $4, province = $5, city = $6,
-             barangay = $7, postal_code = $8, civil_status = $9, occupation = $10,
-             guardian_name = $11, guardian_phone = $12, religion = $13,
-             security_question = $14, security_answer = $15, updated_at = now()
-         WHERE id = $16`,
-        [phone, email, val(b.address), val(b.unit), val(b.province), val(b.city),
+      return res.status(409).json({
+        error: 'A patient with this name already exists in our system. Please contact the clinic to verify your account.',
+      });
+    }
+
+    const hashedSecurityAnswer = await bcrypt.hash(rawSecurityAnswer.toLowerCase().trim(), 10);
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const patientNo = await nextPatientNo(client, clinicId);
+      const newPat = await client.query(
+        `INSERT INTO patients (clinic_id, patient_no, first_name, middle_name, last_name, birth_date, sex,
+           phone, email, address, unit, province, city, barangay, postal_code, civil_status, occupation,
+           guardian_name, guardian_phone, religion, security_question, security_answer, reminders_enabled)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,true)
+         RETURNING id`,
+        [clinicId, patientNo, cleanFirst, cleanMiddle, cleanLast, birthDate, sex,
+         phone, email, val(b.address), val(b.unit), val(b.province), val(b.city),
          val(b.barangay), val(b.postal_code), val(b.civil_status), val(b.occupation),
          val(b.guardian_name), val(b.guardian_phone), val(b.religion),
-         securityQuestion, hashedSecurityAnswer, patientId]
+         securityQuestion, hashedSecurityAnswer]
       );
-    } else {
-      const matchEmailPhone = await client.query(
-        `SELECT p.id FROM patients p
-         LEFT JOIN patient_accounts pa ON pa.patient_id = p.id
-         WHERE p.clinic_id = $1 AND (p.email = $2 OR p.phone = $3) AND pa.id IS NULL
-         ORDER BY p.created_at LIMIT 1`,
-        [clinicId, email, phone]
-      );
+      const patientId = newPat.rows[0].id;
 
-      if (matchEmailPhone.rowCount > 0) {
-        patientId = matchEmailPhone.rows[0].id;
-        await client.query(
-          `UPDATE patients
-           SET first_name = $1, middle_name = $2, last_name = $3, birth_date = $4, sex = $5,
-               phone = $6, email = $7, address = $8, unit = $9, province = $10, city = $11,
-               barangay = $12, postal_code = $13, civil_status = $14, occupation = $15,
-               guardian_name = $16, guardian_phone = $17, religion = $18,
-               security_question = $19, security_answer = $20, updated_at = now()
-           WHERE id = $21`,
-          [cleanFirst, cleanMiddle, cleanLast, birthDate, sex, phone, email,
-           val(b.address), val(b.unit), val(b.province), val(b.city),
-           val(b.barangay), val(b.postal_code), val(b.civil_status), val(b.occupation),
-           val(b.guardian_name), val(b.guardian_phone), val(b.religion),
-           securityQuestion, hashedSecurityAnswer, patientId]
-        );
-      } else {
-        const patientNo = await nextPatientNo(client, clinicId);
-        const newPat = await client.query(
-          `INSERT INTO patients (clinic_id, patient_no, first_name, middle_name, last_name, birth_date, sex,
-             phone, email, address, unit, province, city, barangay, postal_code, civil_status, occupation,
-             guardian_name, guardian_phone, religion, security_question, security_answer, reminders_enabled)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,true)
-           RETURNING id`,
-          [clinicId, patientNo, cleanFirst, cleanMiddle, cleanLast, birthDate, sex,
-           phone, email, val(b.address), val(b.unit), val(b.province), val(b.city),
-           val(b.barangay), val(b.postal_code), val(b.civil_status), val(b.occupation),
-           val(b.guardian_name), val(b.guardian_phone), val(b.religion),
-           securityQuestion, hashedSecurityAnswer]
-        );
-        patientId = newPat.rows[0].id;
-      }
-    }
-
-    const passHash = await bcrypt.hash(password, 10);
-    if (existingAcc.rowCount > 0) {
-      await client.query(
-        `UPDATE patient_accounts
-         SET password_hash = $1, patient_id = $2, is_claimed = true, updated_at = now()
-         WHERE email = $3`,
-        [passHash, patientId, email]
-      );
-    } else {
+      const passHash = await bcrypt.hash(password, 10);
       await client.query(
         `INSERT INTO patient_accounts (clinic_id, patient_id, email, password_hash, is_email_verified, is_claimed)
-         VALUES ($1, $2, $3, $4, false, true)
-         ON CONFLICT (email) DO UPDATE
-         SET password_hash = EXCLUDED.password_hash,
-             patient_id = EXCLUDED.patient_id,
-             is_claimed = true,
-             updated_at = now()`,
+         VALUES ($1, $2, $3, $4, false, true)`,
         [clinicId, patientId, email, passHash]
       );
-    }
 
-    await client.query(
-      `INSERT INTO medical_histories (patient_id, allergies, medications, is_pregnant, has_bleeding_issue, other_notes, answers)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [patientId, val(med.allergies), val(med.medications),
-       med.is_pregnant === true, med.has_bleeding_issue === true,
-       val(med.other_notes), JSON.stringify(med.answers || {})]
-    );
+      await client.query(
+        `INSERT INTO medical_histories (patient_id, allergies, medications, is_pregnant, has_bleeding_issue, other_notes, answers)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [patientId, val(med.allergies), val(med.medications),
+         med.is_pregnant === true, med.has_bleeding_issue === true,
+         val(med.other_notes), JSON.stringify(med.answers || {})]
+      );
 
-    const clientIp = req.ip || req.connection?.remoteAddress || 'unknown';
-    const termsVer = val(b.terms_version) || CLINIC_CONFIG.termsVersion;
-    const privVer = val(b.privacy_version) || CLINIC_CONFIG.privacyVersion;
+      const clientIp = req.ip || req.connection?.remoteAddress || 'unknown';
+      const termsVer = val(b.terms_version) || CLINIC_CONFIG.termsVersion;
+      const privVer = val(b.privacy_version) || CLINIC_CONFIG.privacyVersion;
 
-    await client.query(
-      `INSERT INTO consents (patient_id, consent_type, signed_by, version, ip_address)
-       VALUES ($1, 'terms_and_conditions', $2, $3, $5),
-              ($1, 'privacy_policy', $2, $4, $5)`,
-      [patientId, `${cleanFirst} ${cleanLast}`, termsVer, privVer, clientIp]
-    );
+      await client.query(
+        `INSERT INTO consents (patient_id, consent_type, signed_by, version, ip_address)
+         VALUES ($1, 'terms_and_conditions', $2, $3, $5),
+                ($1, 'privacy_policy', $2, $4, $5)`,
+        [patientId, `${cleanFirst} ${cleanLast}`, termsVer, privVer, clientIp]
+      );
 
-    const code = generateCode();
-    const codeHash = await bcrypt.hash(code, 8);
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+      const code = generateCode();
+      const codeHash = await bcrypt.hash(code, 8);
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
-    await client.query('DELETE FROM verification_codes WHERE email = $1 AND purpose = $2', [email, 'signup']);
-    await client.query(
-      `INSERT INTO verification_codes (email, code_hash, purpose, expires_at)
-       VALUES ($1, $2, 'signup', $3)`,
-      [email, codeHash, expiresAt]
-    );
+      await client.query('DELETE FROM verification_codes WHERE email = $1 AND purpose = $2', [email, 'signup']);
+      await client.query(
+        `INSERT INTO verification_codes (email, code_hash, purpose, expires_at)
+         VALUES ($1, $2, 'signup', $3)`,
+        [email, codeHash, expiresAt]
+      );
 
-    try {
-      console.log(`[PATIENT SIGNUP OTP] ${email}: ${code}`);
-      const htmlContent = buildOtpHtml({
-        title: 'Verify Your Patient Account',
-        subtitle: `Hi ${cleanFirst}, thank you for registering with Smile Avenue Dental Clinic. Please enter the 6-digit verification code below to activate your account:`,
-        code,
+      try {
+        console.log(`[PATIENT SIGNUP OTP] ${email}: ${code}`);
+        const htmlContent = buildOtpHtml({
+          title: 'Verify Your Patient Account',
+          subtitle: `Hi ${cleanFirst}, thank you for registering with Smile Avenue Dental Clinic. Please enter the 6-digit verification code below to activate your account:`,
+          code,
+        });
+        await sendEmail(email, 'Your Verification Code - Smile Avenue Dental Clinic', htmlContent);
+      } catch (emailErr) {
+        console.error('Nodemailer error (Patient Sign-Up - proceeding with fallback):', emailErr.message);
+      }
+
+      await client.query('COMMIT');
+
+      await logActivity(
+        null,
+        'Add Patient',
+        patientId,
+        `New patient registered online: ${cleanFirst} ${cleanLast} (${email})`,
+        patientId
+      );
+
+      res.status(201).json({
+        ok: true,
+        message: 'Account created. Please enter the 6-digit verification code sent to your email.',
+        email,
       });
-      await sendEmail(email, 'Your Verification Code - Smile Avenue Dental Clinic', htmlContent);
-    } catch (emailErr) {
-      // Do NOT rollback! Keep the patient & verification_code saved in the database.
-      console.error('Nodemailer error (Patient Sign-Up - proceeding with fallback):', emailErr.message);
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
     }
-    await client.query('COMMIT');
-
-    await logActivity(
-      null,
-      'Add Patient',
-      patientId,
-      `New patient registered online: ${cleanFirst} ${cleanLast} (${email})`,
-      patientId
-    );
-
-    res.status(201).json({
-      ok: true,
-      message: 'Account created. Please enter the 6-digit verification code sent to your email.',
-      email,
-    });
-  } catch (err) {
-    await client.query('ROLLBACK');
-    throw err;
-  } finally {
-    client.release();
-  }
-}));
+  })
+);
 
 // ============================================================================
 // ACCOUNT CLAIMING ENDPOINTS (FOR PATIENTS ADDED BY STAFF)
@@ -993,16 +981,16 @@ app.post(
     );
 
     try {
-    console.log(`[PATIENT CLAIM OTP] ${cleanEmail}: ${code}`);
-    const htmlContent = buildOtpHtml({
-      title: 'Claim Your Smile Avenue Patient Portal Account',
-      subtitle: `Hello ${toTitleCase(patient.first_name)}, enter this 6-digit verification code to claim and activate your portal account:`,
-      code,
-    });
-    await sendEmail(cleanEmail, 'Claim Your Patient Account - Smile Avenue', htmlContent);
-  } catch (emailErr) {
-    console.error('Nodemailer error (Account Claim - proceeding with fallback):', emailErr.message);
-  }
+      console.log(`[PATIENT CLAIM OTP] ${cleanEmail}: ${code}`);
+      const htmlContent = buildOtpHtml({
+        title: 'Claim Your Smile Avenue Patient Portal Account',
+        subtitle: `Hello ${toTitleCase(patient.first_name)}, enter this 6-digit verification code to claim and activate your portal account:`,
+        code,
+      });
+      await sendEmail(cleanEmail, 'Claim Your Patient Account - Smile Avenue', htmlContent);
+    } catch (emailErr) {
+      console.error('Nodemailer error (Account Claim - proceeding with fallback):', emailErr.message);
+    }
 
     res.json({
       ok: true,
@@ -1551,16 +1539,16 @@ app.post('/api/patient/auth/forgot-password', rateLimit({ windowMs: 60000, max: 
       );
 
       try {
-      console.log(`[PATIENT RESET OTP] ${cleanEmail}: ${code}`);
-      const htmlContent = buildOtpHtml({
-        title: 'Reset Your Password',
-        subtitle: 'Use this 6-digit verification code to reset your patient portal password:',
-        code,
-      });
-      await sendEmail(cleanEmail, 'Password Reset Code - Smile Avenue Dental Clinic', htmlContent);
-    } catch (emailErr) {
-      console.error('Nodemailer forgot-password error (proceeding with fallback):', emailErr.message);
-    }
+        console.log(`[PATIENT RESET OTP] ${cleanEmail}: ${code}`);
+        const htmlContent = buildOtpHtml({
+          title: 'Reset Your Password',
+          subtitle: 'Use this 6-digit verification code to reset your patient portal password:',
+          code,
+        });
+        await sendEmail(cleanEmail, 'Password Reset Code - Smile Avenue Dental Clinic', htmlContent);
+      } catch (emailErr) {
+        console.error('Nodemailer forgot-password error (proceeding with fallback):', emailErr.message);
+      }
     }
   }
 
@@ -2763,7 +2751,7 @@ app.get('/api/staff/patients/:id', auth, wrap(async (req, res) => {
             p.civil_status, p.occupation, p.religion,
             p.guardian_name, p.guardian_phone, p.notes, p.is_active,
             to_char(p.created_at AT TIME ZONE 'Asia/Manila', 'YYYY-MM-DD') AS registered_date,
-            COALESCE(pa.is_claimed, false) AS is_claimed,COALESCE(pa.is_active, true) AS account_is_active,
+            COALESCE(pa.is_claimed, false) AS is_claimed, COALESCE(pa.is_active, true) AS account_is_active,
             (EXISTS (SELECT 1 FROM consents ct WHERE ct.patient_id = p.id AND ct.consent_type = 'terms_and_conditions')
              AND EXISTS (SELECT 1 FROM consents cp WHERE cp.patient_id = p.id AND cp.consent_type = 'privacy_policy')) AS has_consent,
             lc.version AS consent_version,
@@ -3299,6 +3287,7 @@ app.get('/api/staff/overview', auth, wrap(async (req, res) => {
          al.action_type,
          al.target_id,
          al.description,
+         al.device_info,
          al.created_at,
          COALESCE(u.first_name || ' ' || u.last_name, 'Admin') AS staff_name,
          u.role AS staff_role
@@ -3332,7 +3321,7 @@ app.get('/api/patients', auth, wrap(async (req, res) => {
             p.address, p.barangay, p.city, p.province, p.civil_status, p.occupation,
             p.guardian_name, p.guardian_phone, p.tags, p.is_active,
             to_char(p.created_at AT TIME ZONE 'Asia/Manila', 'YYYY-MM-DD') AS registered_date,
-            COALESCE(pa.is_claimed, false) AS is_claimed,COALESCE(pa.is_active, true) AS account_is_active,
+            COALESCE(pa.is_claimed, false) AS is_claimed, COALESCE(pa.is_active, true) AS account_is_active,
             (SELECT to_char(MAX(a.starts_at AT TIME ZONE 'Asia/Manila'), 'YYYY-MM-DD')
                FROM appointments a WHERE a.patient_id = p.id AND a.status = 'completed') AS last_visit,
             (SELECT COALESCE(SUM(b.balance), 0) FROM invoice_balances b
@@ -3514,17 +3503,6 @@ app.get('/api/patients/:id/teeth', auth, wrap(async (req, res) => {
     [req.params.id]
   );
   res.json(r.rows);
-}));
-
-app.post('/api/patients/:id/teeth', auth, wrap(async (req, res) => {
-  if (!(await ownsPatient(req, req.params.id))) return res.status(404).json({ error: 'Patient not found' });
-  const { tooth_number, condition, surfaces = [], notes } = req.body;
-  const r = await pool.query(
-    `INSERT INTO tooth_records (clinic_id, patient_id, tooth_number, surfaces, kind, condition, notes, recorded_by)
-     VALUES ($1,$2,$3,$4,'condition',$5,$6,$7) RETURNING *`,
-    [req.user.clinic_id, req.params.id, tooth_number, surfaces, condition, notes || null, req.user.id]
-  );
-  res.status(201).json(r.rows[0]);
 }));
 
 app.get('/api/dentists', auth, wrap(async (req, res) => {
@@ -3939,12 +3917,6 @@ app.put(
       }
 
       await client.query('COMMIT');
-
-      const patRes = await pool.query('SELECT first_name, middle_name, last_name FROM patients WHERE id = $1', [patientId]);
-      const pat = patRes.rows[0] || {};
-      const patFormatted = pat.last_name
-        ? `${toTitleCase(pat.last_name)}, ${[toTitleCase(pat.first_name || ''), toTitleCase(pat.middle_name || '')].filter(Boolean).join(' ')}`
-        : 'Patient';
 
       await logActivity(
         req.user.id,
@@ -4869,10 +4841,6 @@ app.post(
   wrap(async (req, res) => {
     const clinicId = req.user.clinic_id;
     const currentAdminId = req.user.id;
-
-    const adminRes = await pool.query('SELECT first_name, last_name, email FROM users WHERE id = $1', [currentAdminId]);
-    const admin = adminRes.rows[0] || {};
-    const adminName = `${admin.first_name || 'Admin'} ${admin.last_name || ''}`.trim();
 
     const client = await pool.connect();
     try {

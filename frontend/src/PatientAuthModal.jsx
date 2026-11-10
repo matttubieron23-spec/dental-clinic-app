@@ -52,7 +52,6 @@ function calculateAge(bdate) {
   return age;
 }
 
-// Reusable Eye Icon Component
 function EyeIcon({ visible, onClick }) {
   return (
     <button
@@ -151,7 +150,7 @@ export default function PatientAuthModal({
 
   // 6-Digit OTP State
   const [verifyEmail, setVerifyEmail] = useState('');
-  const [verifyPurpose, setVerifyPurpose] = useState('signup'); // 'signup' | 'password_reset' | 'claim_account'
+  const [verifyPurpose, setVerifyPurpose] = useState('signup');
   const [otpDigits, setOtpDigits] = useState(['', '', '', '', '', '']);
   const [secondsLeft, setSecondsLeft] = useState(600);
   const otpRefs = useRef([]);
@@ -162,7 +161,7 @@ export default function PatientAuthModal({
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
 
   // Account Recovery via Security Questions State
-  const [recoveryStep, setRecoveryStep] = useState('lookup'); // 'lookup' | 'challenge' | 'set_password'
+  const [recoveryStep, setRecoveryStep] = useState('lookup');
   const [recoveryForm, setRecoveryForm] = useState({
     first_name: '',
     last_name: '',
@@ -315,7 +314,7 @@ export default function PatientAuthModal({
   };
 
   // ---------------------------------------------------------------------------
-  // 3. REGISTRATION
+  // 3. REGISTRATION (STEP 1 EMAIL CHECK & STEP 2 STRICT NAME CHECK)
   // ---------------------------------------------------------------------------
   const validateStep0 = async () => {
     const errs = {};
@@ -330,18 +329,6 @@ export default function PatientAuthModal({
     if (regForm.password !== regForm.confirm_password) {
       errs.confirm_password = 'Passwords do not match.';
     }
-    if (!regForm.first_name.trim()) {
-      errs.first_name = 'First name is required.';
-    }
-    if (!regForm.last_name.trim()) {
-      errs.last_name = 'Last name is required.';
-    }
-    if (!regForm.birth_date) {
-      errs.birth_date = 'Date of birth is required.';
-    } else if (regForm.birth_date > todayManila()) {
-      errs.birth_date = 'Date of birth cannot be in the future.';
-    }
-
     if (!regForm.security_question) {
       errs.security_question = 'Please select a security question.';
     }
@@ -356,18 +343,19 @@ export default function PatientAuthModal({
 
     setLoading(true);
     try {
-      const check = await patientApi('/api/patient/auth/check-email', {
+      const check = await patientApi('/api/patients/check-email', {
         method: 'POST',
         body: { email: cleanEmail },
       });
-      if (check?.exists) {
+      if (check === true || check?.exists === true) {
         setFieldErrors({
-          email: 'An account with this email already exists. Please log in.',
+          email: 'This email is already registered. Please log in.',
         });
         return false;
       }
-    } catch {
-      // Continue if network allows
+    } catch (err) {
+      setError(err.message || 'Could not verify email address. Please try again.');
+      return false;
     } finally {
       setLoading(false);
     }
@@ -376,8 +364,19 @@ export default function PatientAuthModal({
     return true;
   };
 
-  const validateStep1 = () => {
+  const validateStep1 = async () => {
     const errs = {};
+    if (!regForm.first_name.trim()) {
+      errs.first_name = 'First name is required.';
+    }
+    if (!regForm.last_name.trim()) {
+      errs.last_name = 'Last name is required.';
+    }
+    if (!regForm.birth_date) {
+      errs.birth_date = 'Date of birth is required.';
+    } else if (regForm.birth_date > todayManila()) {
+      errs.birth_date = 'Date of birth cannot be in the future.';
+    }
     if (!regForm.phone.trim() || !isPhilippinePhone(regForm.phone)) {
       errs.phone = 'Enter a valid Philippine mobile number (e.g. 0917 123 4567).';
     }
@@ -394,6 +393,30 @@ export default function PatientAuthModal({
       setFieldErrors(errs);
       return false;
     }
+
+    // Strict Name Verification (First Name + Last Name, Ignoring Birthday)
+    setLoading(true);
+    try {
+      const nameCheck = await patientApi('/api/patients/check-name', {
+        method: 'POST',
+        body: {
+          first_name: regForm.first_name.trim(),
+          last_name: regForm.last_name.trim(),
+        },
+      });
+      if (nameCheck === true || nameCheck?.exists === true) {
+        setError(
+          'A patient with this name already exists in our system. Please contact the clinic to verify your account.'
+        );
+        return false;
+      }
+    } catch (err) {
+      setError(err.message || 'Could not verify patient name. Please try again.');
+      return false;
+    } finally {
+      setLoading(false);
+    }
+
     setFieldErrors({});
     return true;
   };
@@ -404,7 +427,7 @@ export default function PatientAuthModal({
       const ok = await validateStep0();
       if (ok) setRegStep(1);
     } else if (regStep === 1) {
-      const ok = validateStep1();
+      const ok = await validateStep1();
       if (ok) setRegStep(2);
     }
   };
@@ -438,7 +461,7 @@ export default function PatientAuthModal({
     setLoading(true);
     try {
       const cleanEmail = regForm.email.trim().toLowerCase();
-      await patientApi('/api/patient/auth/register', {
+      await patientApi('/api/patients/register', {
         method: 'POST',
         body: {
           email: cleanEmail,
@@ -881,7 +904,6 @@ export default function PatientAuthModal({
                 {loading ? 'Signing in...' : 'Log In'}
               </Button>
 
-              {/* FIRST TIME HERE? CLAIM ACCOUNT */}
               <div className="rounded-xl border border-blue-200 bg-blue-50/70 p-3 text-center text-xs">
                 <span className="font-medium text-slate-700">First time here? </span>
                 <Button
@@ -908,6 +930,7 @@ export default function PatientAuthModal({
                   onClick={() => {
                     setError('');
                     setNotice('');
+                    setFieldErrors({});
                     setRegStep(0);
                     setView('register');
                   }}
@@ -1043,11 +1066,11 @@ export default function PatientAuthModal({
         {view === 'register' && (
           <form onSubmit={handleRegisterSubmit} noValidate className="space-y-6">
             <Stepper
-              steps={['1. Account & Identity', '2. Contact & Address', '3. Medical & Consent']}
+              steps={['1. Account Creation', '2. Patient Information', '3. Medical & Consent']}
               currentStep={regStep}
             />
 
-            {/* STEP 0: ACCOUNT & LEGAL IDENTITY */}
+            {/* STEP 1 (regStep === 0): ACCOUNT CREATION & EMAIL VERIFICATION */}
             {regStep === 0 && (
               <div className="space-y-6 pt-2">
                 <div className="space-y-4 rounded-[12px] border border-slate-200 bg-slate-50/70 p-5">
@@ -1091,70 +1114,6 @@ export default function PatientAuthModal({
                       }}
                       error={fieldErrors.confirm_password}
                     />
-                  </div>
-                </div>
-
-                <div className="space-y-4 rounded-[12px] border border-slate-200 bg-slate-50/70 p-5">
-                  <h3 className="text-xs font-extrabold uppercase tracking-wider text-blue-800">
-                    Patient Legal Identity
-                  </h3>
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                    <InputField
-                      label="First Name"
-                      required
-                      placeholder="e.g. Maria"
-                      value={regForm.first_name}
-                      onChange={(e) => {
-                        setRegForm({ ...regForm, first_name: e.target.value });
-                        setFieldErrors({ ...fieldErrors, first_name: undefined });
-                      }}
-                      error={fieldErrors.first_name}
-                    />
-                    <InputField
-                      label="Middle Name"
-                      placeholder="Optional"
-                      value={regForm.middle_name}
-                      onChange={(e) =>
-                        setRegForm({ ...regForm, middle_name: e.target.value })
-                      }
-                    />
-                    <InputField
-                      label="Last Name"
-                      required
-                      placeholder="e.g. Santos"
-                      value={regForm.last_name}
-                      onChange={(e) => {
-                        setRegForm({ ...regForm, last_name: e.target.value });
-                        setFieldErrors({ ...fieldErrors, last_name: undefined });
-                      }}
-                      error={fieldErrors.last_name}
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <InputField
-                      label="Date of Birth"
-                      type="date"
-                      required
-                      max={todayManila()}
-                      value={regForm.birth_date}
-                      onChange={(e) => {
-                        setRegForm({ ...regForm, birth_date: e.target.value });
-                        setFieldErrors({ ...fieldErrors, birth_date: undefined });
-                      }}
-                      error={fieldErrors.birth_date}
-                    />
-                    <InputField
-                      label="Gender / Sex"
-                      as="select"
-                      required
-                      value={regForm.sex}
-                      onChange={(e) => setRegForm({ ...regForm, sex: e.target.value })}
-                    >
-                      <option value="female">Female</option>
-                      <option value="male">Male</option>
-                      <option value="other">Other</option>
-                    </InputField>
                   </div>
                 </div>
 
@@ -1214,15 +1173,81 @@ export default function PatientAuthModal({
                     disabled={loading}
                     onClick={handleNextStep}
                   >
-                    {loading ? 'Checking...' : 'Next: Contact Info →'}
+                    {loading ? 'Checking...' : 'Next →'}
                   </Button>
                 </div>
               </div>
             )}
 
-            {/* STEP 1: CONTACT, ADDRESS & GUARDIAN DETAILS */}
+            {/* STEP 2 (regStep === 1): PATIENT INFORMATION & STRICT NAME VERIFICATION */}
             {regStep === 1 && (
               <div className="space-y-6 pt-2">
+                <div className="space-y-4 rounded-[12px] border border-slate-200 bg-slate-50/70 p-5">
+                  <h3 className="text-xs font-extrabold uppercase tracking-wider text-blue-800">
+                    Patient Legal Identity
+                  </h3>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                    <InputField
+                      label="First Name"
+                      required
+                      placeholder="e.g. Maria"
+                      value={regForm.first_name}
+                      onChange={(e) => {
+                        setRegForm({ ...regForm, first_name: e.target.value });
+                        setFieldErrors({ ...fieldErrors, first_name: undefined });
+                        setError('');
+                      }}
+                      error={fieldErrors.first_name}
+                    />
+                    <InputField
+                      label="Middle Name"
+                      placeholder="Optional"
+                      value={regForm.middle_name}
+                      onChange={(e) =>
+                        setRegForm({ ...regForm, middle_name: e.target.value })
+                      }
+                    />
+                    <InputField
+                      label="Last Name"
+                      required
+                      placeholder="e.g. Santos"
+                      value={regForm.last_name}
+                      onChange={(e) => {
+                        setRegForm({ ...regForm, last_name: e.target.value });
+                        setFieldErrors({ ...fieldErrors, last_name: undefined });
+                        setError('');
+                      }}
+                      error={fieldErrors.last_name}
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <InputField
+                      label="Date of Birth"
+                      type="date"
+                      required
+                      max={todayManila()}
+                      value={regForm.birth_date}
+                      onChange={(e) => {
+                        setRegForm({ ...regForm, birth_date: e.target.value });
+                        setFieldErrors({ ...fieldErrors, birth_date: undefined });
+                      }}
+                      error={fieldErrors.birth_date}
+                    />
+                    <InputField
+                      label="Gender / Sex"
+                      as="select"
+                      required
+                      value={regForm.sex}
+                      onChange={(e) => setRegForm({ ...regForm, sex: e.target.value })}
+                    >
+                      <option value="female">Female</option>
+                      <option value="male">Male</option>
+                      <option value="other">Other</option>
+                    </InputField>
+                  </div>
+                </div>
+
                 <div className="space-y-4 rounded-[12px] border border-slate-200 bg-slate-50/70 p-5">
                   <h3 className="text-xs font-extrabold uppercase tracking-wider text-blue-800">
                     Contact &amp; Address Details
@@ -1324,22 +1349,26 @@ export default function PatientAuthModal({
                   <Button
                     type="button"
                     variant="secondary"
-                    onClick={() => setRegStep(0)}
+                    onClick={() => {
+                      setError('');
+                      setRegStep(0);
+                    }}
                   >
                     ← Back
                   </Button>
                   <Button
                     type="button"
                     variant="primary"
+                    disabled={loading}
                     onClick={handleNextStep}
                   >
-                    Next: Medical History →
+                    {loading ? 'Checking...' : 'Next: Medical History →'}
                   </Button>
                 </div>
               </div>
             )}
 
-            {/* STEP 2: MEDICAL HISTORY & RA 10173 CONSENT */}
+            {/* STEP 3 (regStep === 2): MEDICAL HISTORY & RA 10173 CONSENT */}
             {regStep === 2 && (
               <div className="space-y-6 pt-2">
                 <div className="space-y-3 rounded-[12px] border border-slate-200 bg-slate-50/70 p-5">
@@ -1488,7 +1517,10 @@ export default function PatientAuthModal({
                   <Button
                     type="button"
                     variant="secondary"
-                    onClick={() => setRegStep(1)}
+                    onClick={() => {
+                      setError('');
+                      setRegStep(1);
+                    }}
                   >
                     ← Back
                   </Button>
@@ -1752,7 +1784,6 @@ export default function PatientAuthModal({
                   ✓ Identity verified! Please set a new password for your account below.
                 </div>
 
-                {/* New Password with Eye Icon */}
                 <div className="relative">
                   <InputField
                     label="New Password"
@@ -1768,7 +1799,6 @@ export default function PatientAuthModal({
                   />
                 </div>
 
-                {/* Confirm Password with Eye Icon */}
                 <div className="relative">
                   <InputField
                     label="Confirm New Password"
